@@ -7,7 +7,7 @@ from . import BaseCog
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot, Context
+    from utils.subclasses import Bot, Context
 
 
 class Moderation(BaseCog):
@@ -147,11 +147,11 @@ class Moderation(BaseCog):
             return
 
         WHITE_CHECK_MARK = "\u2705"
-        CROSS_EMOJI = "\u274C"
+        CROSS_EMOJI = "\u274c"
 
         desc = ""
         for module, description in self.modules.items():
-            desc += f"\n{WHITE_CHECK_MARK if module not in self.bot.disabled_modules.get(ctx.guild.id, []) else CROSS_EMOJI} {module}: {description}"
+            desc += f"\n{WHITE_CHECK_MARK if module not in self.bot.disabled_modules.get(ctx.guild.id, ['']) else CROSS_EMOJI} {module}: {description}"
 
         embed = discord.Embed(title="Modules", description=desc)
         await ctx.send(embed=embed)
@@ -174,7 +174,7 @@ class Moderation(BaseCog):
         if module not in self.modules:
             return await ctx.send(f"Module `{module}` does not exist.")
 
-        if module not in self.bot.disabled_modules.get(ctx.guild.id, []):
+        if module not in self.bot.disabled_modules.get(ctx.guild.id, [""]):
             return await ctx.send(f"Module `{module}` is already enabled.")
 
         q = """
@@ -205,7 +205,7 @@ class Moderation(BaseCog):
         if module not in self.modules:
             return await ctx.send(f"Module `{module}` does not exist.")
 
-        if module in self.bot.disabled_modules.get(ctx.guild.id, []):
+        if module in self.bot.disabled_modules.get(ctx.guild.id, [""]):
             return await ctx.send(f"Module `{module}` is already disabled.")
 
         q = """

@@ -6,6 +6,7 @@ from aiohttp import ClientSession
 from typing import Any, Optional, TYPE_CHECKING
 
 from .. import logger
+
 from .types import (
     FetchResult,
     FetchRequestResult,
@@ -17,7 +18,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:
-    from .._utils.subclasses import Bot
+    from utils.subclasses import Bot
 
 SEARCH_QUERY = """
 query ($search: String, $type: MediaType) {
@@ -47,10 +48,13 @@ query ($search: %s, $type: MediaType) {
       id
     }
     description(asHtml: false)
+    nextAiringEpisode {
+      id
+    }
+    episodes
     id
     genres
     averageScore
-    episodes
     duration
     chapters
     status

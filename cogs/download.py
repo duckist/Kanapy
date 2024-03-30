@@ -5,7 +5,7 @@ from discord.ext import commands
 import re
 import asyncio
 
-import yt_dlp  # pyright: ignore[reportMissingTypeStubs] # stubs when
+import yt_dlp  # pyright: ignore[reportMissingTypeStubs]
 
 # fmt: off
 from yt_dlp.extractor.youtube import YoutubeIE, YoutubeClipIE  # pyright: ignore[reportMissingTypeStubs]
@@ -25,7 +25,7 @@ from . import BaseCog
 from typing import TYPE_CHECKING, Any, Literal, Optional, Annotated, TypedDict
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot, Context
+    from utils.subclasses import Bot, Context
 
 DEFAULT_UPLOAD_LIMIT = 25 * 1024 * 1024
 
@@ -197,7 +197,7 @@ class Download(BaseCog):
 
         if isAudio:
             options["format"] = "bestaudio/best"
-            options.setdefault("postprocessors", []).append(
+            options.setdefault("postprocessors", []).append(  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]  # screw u pyright let me golf in peace
                 {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": flags.fmt,

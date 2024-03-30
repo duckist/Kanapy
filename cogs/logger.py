@@ -14,7 +14,7 @@ from io import BytesIO
 from . import BaseCog, logger
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot
+    from utils.subclasses import Bot
     from typing import Any
     from typing_extensions import Self
 
@@ -22,8 +22,7 @@ if TYPE_CHECKING:
 GUILD_FILESIZE_LIMIT = 25 * 1024 * 1024  # as that's what basic guilds get.
 
 
-class NoAvatarData(Exception):
-    ...
+class NoAvatarData(Exception): ...
 
 
 class AvatarData(TypedDict):
@@ -278,12 +277,11 @@ class Logger(BaseCog):
             ]
         )
 
-        self.ratelimit_cooldown = commands.CooldownMapping.from_cooldown(  # type: ignore
+        # the docs say the ratelimits are 30 requests per 10 seconds, just to be safe i'm leaving a bit of headroom.
+        self.ratelimit_cooldown = commands.CooldownMapping.from_cooldown(  # pyright: ignore[reportUnknownMemberType]
             15,
             1,
-            lambda avatar: hash(
-                avatar
-            ),  # the docs say the ratelimits are 30 requests per 10 seconds, just to be safe i'm leaving a bit of headroom.
+            lambda avatar: avatar.key,  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
         )
 
     async def upload_avatar(
@@ -292,7 +290,7 @@ class Logger(BaseCog):
         file: discord.Asset,
         changed_at: datetime = discord.utils.utcnow(),
     ):
-        retry = self.ratelimit_cooldown.update_rate_limit(file)  # type: ignore
+        retry = self.ratelimit_cooldown.update_rate_limit(file)  # pyright: ignore[reportUnknownMemberType]
         if retry:
             await asyncio.sleep(retry)
             await self.upload_avatar(member, file, changed_at)
@@ -303,19 +301,17 @@ class Logger(BaseCog):
                 return
 
             resp = await req.read()
-
             content_type = req.headers.get("Content-Type", "image/png")
-
             data = BytesIO(resp)
+
             if data.getbuffer().nbytes > GUILD_FILESIZE_LIMIT:
                 logger.error(
                     f"AVATAR LIMIT EXCEEDED, avatar size: {data.getbuffer().nbytes}"
                 )
                 return
 
-            file_ext = content_type.partition("/")[-1:][
-                0
-            ]  # not always accurate but it is in our usecase.
+            # not always accurate but it is in our usecase.
+            file_ext = content_type.partition("/")[-1:][0]
 
             resp = await self.webhooks.send(
                 f"{member.id}\n{changed_at.timestamp()}",
@@ -352,7 +348,7 @@ class Logger(BaseCog):
         self, before: discord.Member, after: discord.Member
     ):
         avatar = None
-        if isinstance(before, discord.Member) and before.guild_avatar != after.guild_avatar:  # type: ignore # for some reason its a User(?) sometimes
+        if before.guild_avatar != after.guild_avatar:
             avatar = after.guild_avatar
         elif before.avatar != after.avatar:
             avatar = after.avatar

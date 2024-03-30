@@ -12,11 +12,11 @@ from platform import python_version
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from ._utils import deltaconv
+from utils import deltaconv
 from . import BaseCog
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot, Context
+    from utils.subclasses import Bot, Context
 
 
 def get_latest_commits(source_url: str, count: int = 3) -> str:
@@ -24,26 +24,21 @@ def get_latest_commits(source_url: str, count: int = 3) -> str:
         repo = pygit2.Repository(".git")
         commits = [
             commit
-            for commit in repo.walk(repo.head.target, pygit2.GIT_SORT_TOPOLOGICAL)
+            for commit in repo.walk(repo.head.target, pygit2.GIT_SORT_TOPOLOGICAL)  # pyright: ignore[reportArgumentType]
         ][:count]
 
-        final: str = ""
+        final = ""
         for commit in commits:
-            if len(commit.message) > 40:
-                final += (
-                    f"\n[ [`{commit.hex[:6]}`]({source_url}/commit/{commit.hex}) ] "
-                )
-                final += commit.message[:42].replace("\n", "")
-                final += "..."
-                final += " (<t:" + str(commit.commit_time) + ":R>)"
-                continue
-
             final += f"\n[ [`{commit.hex[:6]}`]({source_url}/commit/{commit.hex}) ] "
-            final += commit.message.replace("\n", "")
+            if len(commit.message) > 40:
+                final += commit.message[:42].replace("\n", "") + "..."
+            else:
+                final += commit.message.replace("\n", "")
+
             final += " (<t:" + str(commit.commit_time) + ":R>)"
 
         return final
-    except:
+    except:  # noqa: E722
         return "Could not retrieve commits."
 
 

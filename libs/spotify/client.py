@@ -4,7 +4,8 @@ import json
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Optional, overload
 
-from cogs.search.types import (
+from .. import logger
+from .types import (
     AccessToken,
     Album,
     Playlist,
@@ -18,13 +19,7 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
 
 
-import logging
-
-logger = logging.getLogger("discord")
-
-
-class InvalidToken(Exception):
-    ...
+class InvalidToken(Exception): ...
 
 
 HEADER_TEMPLATE = {
@@ -110,7 +105,7 @@ def parse_playlist_obj(payload: dict[str, Any]) -> Optional[Playlist]:
 def parse_podcast_obj(payload: dict[str, Any]) -> Optional[Podcast]:
     p = payload["data"]
 
-    return {
+    return {  # type: ignore
         "name": p["name"],
         "url": parse_url(p["uri"]),
         "publisher": p.get("publisher", {}).get("name", "UNKNOWN"),
@@ -182,32 +177,27 @@ class SpotifyClient:
     @overload
     async def search(
         self, query: str, *, search_type: Literal[SearchType.tracksV2]
-    ) -> list[Song]:
-        ...
+    ) -> list[Song]: ...
 
     @overload
     async def search(
         self, query: str, *, search_type: Literal[SearchType.artists]
-    ) -> list[Artist]:
-        ...
+    ) -> list[Artist]: ...
 
     @overload
     async def search(
         self, query: str, *, search_type: Literal[SearchType.albums]
-    ) -> list[Album]:
-        ...
+    ) -> list[Album]: ...
 
     @overload
     async def search(
         self, query: str, *, search_type: Literal[SearchType.playlists]
-    ) -> list[Playlist]:
-        ...
+    ) -> list[Playlist]: ...
 
     @overload
     async def search(
         self, query: str, *, search_type: Literal[SearchType.podcasts]
-    ) -> list[Podcast]:
-        ...
+    ) -> list[Podcast]: ...
 
     async def search(
         self, query: str, *, search_type: SearchType, offset: int = 0, limit: int = 10
@@ -222,7 +212,9 @@ class SpotifyClient:
                 query, search_type=search_type, offset=offset, limit=limit
             )
         except InvalidToken:
-            await self.renew_token()  # because the token timesout when due to inactivity
+            await (
+                self.renew_token()
+            )  # because the token timesout when due to inactivity
             return await self._search(
                 query, search_type=search_type, offset=offset, limit=limit
             )

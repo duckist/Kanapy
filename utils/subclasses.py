@@ -12,9 +12,9 @@ from logging.handlers import QueueHandler
 from asyncio import Queue, Lock
 from aiohttp import ClientSession
 
-from typing import Any, Dict, Generator, Optional, Type, Union
+from typing import Any, Dict, Generator, Type, Union
 
-from cogs.animanga.anilist import AniList
+from libs.anilist import AniList
 
 from .constants import STARTUP_QUERY
 
@@ -114,7 +114,8 @@ class Bot(commands.Bot):
             self.guild = self.get_guild(GUILD_ID) or await self.fetch_guild(GUILD_ID)
 
     async def send_output(self):
-        avatar = lambda avatar_id: f"https://cdn.discordapp.com/embed/avatars/{avatar_id}.png"  # type: ignore
+        def avatar(avatar_id: int) -> str:
+            return f"https://cdn.discordapp.com/embed/avatars/{avatar_id}.png"
 
         # fmt: off
         # Mapping of ERROR_NO: (USERNAME, AVATAR)
@@ -165,7 +166,9 @@ class Bot(commands.Bot):
             self.loop.create_task(self.send_output())
 
         conn = await asyncpg.create_pool(
-            self.config["Bot"]["PSQL_URI"], min_size=1, max_size=5  # TODO: remove this
+            self.config["Bot"]["PSQL_URI"],
+            min_size=1,
+            max_size=5,  # TODO: remove this
         )
         if conn is None:
             raise RuntimeError("Could not connect to the DATABASE")

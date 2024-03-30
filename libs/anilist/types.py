@@ -103,6 +103,7 @@ class FetchResult(TypedDict):
     status: str
     title: str
     trailer: Optional[str]
+    nextAiringEpisode: Optional[ParsedNode]
     type: SearchType
     studios: list[Studios]
     relations: list[Relation]

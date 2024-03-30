@@ -1,15 +1,15 @@
 from discord.ext import commands
 
-from jishaku.features.root_command import natural_size as ns
+from jishaku.features.root_command import natural_size as ns  # pyright: ignore[reportPrivateImportUsage]
 
 from . import BaseCog
-from ._utils import deltaconv
+from utils import deltaconv
 from .download import FileTooLarge
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot, Context
+    from utils.subclasses import Bot, Context
 
 
 def format_errors(perms: list[str]) -> str:
@@ -69,7 +69,7 @@ class Errors(BaseCog):
                 content=f"Sorry, the file is too large to upload. I can only send `{ns(error.limit)}` worth of files here."
             )
 
-        await ctx.send("Something went wrong, this incident will be reported.")
+        await ctx.send("Something went wrong. This incident has been reported.")
         raise error
 
 

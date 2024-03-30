@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 # random constants
 FANCY_ARROW_RIGHT = "\U00002570"
+BELL = "\U0001f514"
 ESCAPE = "\u001b"
 INVIS_CHAR = "\u2800"
 NL = "\n"

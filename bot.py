@@ -1,12 +1,12 @@
-import toml
+import tomllib
 import discord
 
-import cogs._utils.library_override  # pyright: ignore[reportUnusedImport]
-from cogs._utils.subclasses import Bot
+import utils.library_override # pyright: ignore[reportUnusedImport]
+from utils.subclasses import Bot
 
 
-with open("Config.toml") as f:
-    config = toml.load(f)
+with open("Config.toml", "rb") as f:
+    config = tomllib.load(f)
 
 bot = Bot(
     intents=discord.Intents().all(),
