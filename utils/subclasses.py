@@ -12,8 +12,9 @@ from logging.handlers import QueueHandler
 from asyncio import Queue, Lock
 from aiohttp import ClientSession
 
-from typing import Any, Dict, Generator, Type, Union
+from typing import Any, Dict, Type, Union
 
+from utils import as_chunks, to_cb
 from libs.anilist import AniList
 
 from .constants import STARTUP_QUERY
@@ -23,11 +24,6 @@ log_handler = QueueHandler(queue)  # type: ignore
 
 logger = logging.getLogger("discord")  # TODO: do logging properly
 logger.addHandler(log_handler)
-
-
-def as_chunks(n: int, text: str) -> Generator[str, None, None]:
-    for i in range(0, len(text), n):
-        yield text[i : i + n]
 
 
 class Context(commands.Context["Bot"]):
@@ -134,10 +130,22 @@ class Bot(commands.Bot):
             name, avatar_url = ERROR_TYPE_MAPPING[log.levelno]
             message = log.getMessage()
 
-            for chunk in as_chunks(2000, message):
-                await self.stdout_webhook.send(
-                    content=chunk, username=name, avatar_url=avatar_url
-                )
+            if log.levelno >= 40:
+                for chunk in as_chunks(3990, message):
+                    embed = discord.Embed(
+                        description=to_cb(chunk, "py"), color=0xFF0000
+                    )
+
+                    await self.stdout_webhook.send(
+                        embed=embed, username=name, avatar_url=avatar_url
+                    )
+            else:
+                for chunk in as_chunks(2000, message):
+                    await self.stdout_webhook.send(
+                        username=name,
+                        avatar_url=avatar_url,
+                        content=chunk,
+                    )
 
     async def setup_hook(self):
         # called before the bot starts
