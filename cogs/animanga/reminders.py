@@ -8,47 +8,45 @@ from libs.livechart import LiveChartClient, Anime
 from .. import BaseCog, logger
 from .frontend import ReminderButton
 
-from typing import TYPE_CHECKING, Optional, TypedDict
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from utils.subclasses import Bot
-
-
-class ReminderData(TypedDict):
-    titles: list[Anime]
-    currently_sleeping_for: Optional[Anime]
 
 
 class ReminderCog(BaseCog):
     def __init__(self, bot: "Bot") -> None:
         super().__init__(bot)
         self.client = LiveChartClient()
-        self.titles = []
+        self.titles: list[Anime] = []
+
+    def restart_reminders_watcher(self):
+        if self.reminders_watcher.is_running():
+            self.reminders_watcher.cancel()
+
+        self.reminders_watcher.start()
 
     @tasks.loop(hours=1)
     async def fetch_titles(self):
-        titles = list(
-            filter(
-                lambda title: title["premiere"] > discord.utils.utcnow(),
-                await self.client.fetch_today(),
-            )
-        )
+        titles = await self.client.fetch_today(ignore_old=True)
 
-        if not titles:
-            titles = list(
-                filter(
-                    lambda title: title["premiere"] > discord.utils.utcnow(),
-                    await self.client.fetch_tomorrow(),
-                )
-            )
+        if len(titles) <= 3:
+            titles = await self.client.fetch_tomorrow(ignore_old=True)
+
+        if len(titles) <= 3:
+            titles += await self.client.fetch_titles_after_day(2, ignore_old=True)
+
+        if any(
+            new_title
+            for new_title, old_title in zip(titles, self.titles)
+            if new_title["premiere"] != old_title["premiere"]
+        ):
+            self.restart_reminders_watcher()
 
         self.titles = titles
-        logger.info(f"Fetched the titles, got {len(titles)} titles.")
+        logger.info(f"Fetched {len(titles)} titles.")
 
-    async def remind_title(
-        self,
-        anime: Anime,
-    ):
+    async def send_reminders_for(self, anime: Anime):
         assert anime["anilist_id"]
         users = await self.bot.pool.fetch(
             "SELECT user_id FROM anime_reminders WHERE anilist_id = $1",
@@ -86,7 +84,7 @@ class ReminderCog(BaseCog):
             await user.send(embed=embed, view=view)
 
     @tasks.loop(minutes=5)
-    async def send_out_reminders(self):
+    async def reminders_watcher(self):
         titles = self.titles
 
         for title in titles:
@@ -104,21 +102,21 @@ class ReminderCog(BaseCog):
                 continue
 
             logger.info(
-                f"Sleeping for {title['premiere']} seconds, for the title {title['title']['romaji']!r} and for the users {users}."
+                f"Sleeping until {title['premiere']}. title={title['title']['romaji']!r}, {users=}"
             )
 
             await discord.utils.sleep_until(title["premiere"])
-            await self.remind_title(title)
+            await self.send_reminders_for(title)
 
-    @send_out_reminders.before_loop
-    async def before_send_out_reminders(self):
+    @reminders_watcher.before_loop
+    async def before_reminders_watcher(self):
         await self.bot.wait_until_ready()
 
     async def cog_load(self):
         self.fetch_titles.start()
-        self.send_out_reminders.start()
+        self.reminders_watcher.start()
 
     async def cog_unload(self):
-        self.fetch_titles.stop()
-        self.send_out_reminders.stop()
+        self.fetch_titles.cancel()
+        self.reminders_watcher.cancel()
         await self.client.session.close()

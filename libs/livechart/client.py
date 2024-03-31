@@ -106,7 +106,12 @@ class LiveChartClient:
             ),
         }
 
-    async def fetch_titles_after_day(self, day: int) -> list[Anime]:
+    async def fetch_titles_after_day(
+        self,
+        day: int,
+        *,
+        ignore_old: bool = False,
+    ) -> list[Anime]:
         soup = await self.get_soup()
         twenty_four_hour_periods = self.find_all(
             soup, "div", {"data-controller": "schedule-day"}
@@ -122,12 +127,25 @@ class LiveChartClient:
         if not articles:
             raise NotFound
 
-        return sorted(
-            list(map(self.parse_title, articles)), key=lambda anime: anime["premiere"]
+        titles = sorted(
+            map(self.parse_title, articles), key=lambda anime: anime["premiere"]
         )
 
-    async def fetch_today(self):
-        return await self.fetch_titles_after_day(0)
+        return self._remove_old(titles) if ignore_old else titles
 
-    async def fetch_tomorrow(self):
-        return await self.fetch_titles_after_day(1)
+    def _remove_old(
+        self,
+        titles: list[Anime],
+    ) -> list[Anime]:
+        return list(
+            filter(
+                lambda title: title["premiere"] > datetime.now(timezone.utc),
+                titles,
+            )
+        )
+
+    async def fetch_today(self, *, ignore_old: bool = False):
+        return await self.fetch_titles_after_day(0, ignore_old=ignore_old)
+
+    async def fetch_tomorrow(self, *, ignore_old: bool = False):
+        return await self.fetch_titles_after_day(1, ignore_old=ignore_old)
