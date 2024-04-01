@@ -19,12 +19,18 @@ def cutoff(
     )
 
 
-def as_chunks(n: int, text: str) -> Generator[str, None, None]:
+def as_chunks(
+    n: int,
+    text: str,
+) -> Generator[str, None, None]:
     for i in range(0, len(text), n):
         yield text[i : i + n]
 
 
-def to_cb(text: str, lang: Optional[str]) -> str:
+def to_cb(
+    text: str,
+    lang: Optional[str],
+) -> str:
     return f"```{lang}\n{text}\n```"
 
 

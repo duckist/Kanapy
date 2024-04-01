@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import discord
 from discord import ui
 from discord.ext import tasks
@@ -14,17 +16,25 @@ if TYPE_CHECKING:
     from utils.subclasses import Bot
 
 
-class ReminderCog(BaseCog):
-    def __init__(self, bot: "Bot") -> None:
+class AnimangaReminders(BaseCog):
+    def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
         self.client = LiveChartClient()
         self.titles: list[Anime] = []
 
-    def restart_reminders_watcher(self):
-        if self.reminders_watcher.is_running():
-            self.reminders_watcher.cancel()
+    async def toggle_reminder_for(
+        self,
+        user_id: int,
+        anime_id: int,
+    ) -> bool:
+        result = await self.bot.pool.fetchval(
+            "SELECT toggle_reminder($1, $2)", user_id, anime_id
+        )
 
-        self.reminders_watcher.start()
+        if any(title for title in self.titles if title["anilist_id"] == anime_id):
+            self.restart_livechart_watcher()
+
+        return result == 1
 
     @tasks.loop(hours=1)
     async def fetch_titles(self):
@@ -36,12 +46,8 @@ class ReminderCog(BaseCog):
         if len(titles) <= 3:
             titles += await self.client.fetch_titles_after_day(2, ignore_old=True)
 
-        if any(
-            new_title
-            for new_title, old_title in zip(titles, self.titles)
-            if new_title["premiere"] != old_title["premiere"]
-        ):
-            self.restart_reminders_watcher()
+        if titles != self.titles:
+            self.restart_livechart_watcher()
 
         self.titles = titles
         logger.info(f"Fetched {len(titles)} titles.")
@@ -84,7 +90,7 @@ class ReminderCog(BaseCog):
             await user.send(embed=embed, view=view)
 
     @tasks.loop(minutes=5)
-    async def reminders_watcher(self):
+    async def livechart_watcher(self):
         titles = self.titles
 
         for title in titles:
@@ -108,15 +114,21 @@ class ReminderCog(BaseCog):
             await discord.utils.sleep_until(title["premiere"])
             await self.send_reminders_for(title)
 
-    @reminders_watcher.before_loop
+    @livechart_watcher.before_loop
     async def before_reminders_watcher(self):
         await self.bot.wait_until_ready()
 
+    def restart_livechart_watcher(self):
+        if self.livechart_watcher.is_running():
+            self.livechart_watcher.cancel()
+
+        self.livechart_watcher.start()
+
     async def cog_load(self):
         self.fetch_titles.start()
-        self.reminders_watcher.start()
+        self.livechart_watcher.start()
 
     async def cog_unload(self):
         self.fetch_titles.cancel()
-        self.reminders_watcher.cancel()
+        self.livechart_watcher.cancel()
         await self.client.session.close()

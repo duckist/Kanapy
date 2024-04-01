@@ -21,7 +21,7 @@ NSFW_ERROR_MSG = (
 )
 
 
-class Frontend(BaseCog):
+class AnimangaFrontend(BaseCog):
     def __init__(self, bot: "Bot"):
         super().__init__(bot)
         self.anilist = self.bot.anilist

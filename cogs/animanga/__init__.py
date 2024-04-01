@@ -1,5 +1,5 @@
-from .frontend import Frontend
-from .reminders import ReminderCog
+from .frontend import AnimangaFrontend
+from .reminders import AnimangaReminders
 
 from typing import TYPE_CHECKING
 
@@ -7,8 +7,8 @@ if TYPE_CHECKING:
     from utils.subclasses import Bot
 
 
-class AniManga(Frontend, ReminderCog): ...
+class Animanga(AnimangaFrontend, AnimangaReminders): ...
 
 
 async def setup(bot: "Bot"):
-    await bot.add_cog(AniManga(bot))
+    await bot.add_cog(Animanga(bot))

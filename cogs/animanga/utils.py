@@ -6,12 +6,13 @@ from discord import ui
 import re
 from urllib.parse import quote
 
-from utils.constants import BELL, BOOK, CAMERA
+from utils.constants import BELL, BOOK, CAMERA, NO_BELL
 from libs.anilist.types import FetchResult, Relation, SearchType
 
 from typing import TYPE_CHECKING, Optional, Self
 
 if TYPE_CHECKING:
+    from . import Animanga
     from utils.subclasses import Bot
 
 
@@ -27,16 +28,8 @@ class View(ui.View):
             view = view or cls(timeout=None)
             view.add_item(RelationSelect(result["relations"]))
 
-        if result["nextAiringEpisode"]:
-            view = view or cls(timeout=None)
-            view.add_item(
-                await ReminderButton.for_user(
-                    interaction.client, result["id"], interaction.user.id
-                )
-            )
-
         if result["trailer"]:
-            view = view or cls()
+            view = view or cls(timeout=None)
             view.add_item(
                 ui.Button(
                     label="Trailer",
@@ -45,18 +38,28 @@ class View(ui.View):
                 )
             )
 
+        if result["nextAiringEpisode"]:
+            view = view or cls(timeout=None)
+            view.add_item(
+                await ReminderButton.for_user(
+                    interaction.client, result["id"], interaction.user.id
+                )
+            )
+
         return view
 
 
-class RelationSelect(ui.DynamicItem[ui.Select[View]], template=r"kana:relations"):
+class RelationSelect(
+    ui.DynamicItem[ui.Select[View]], template=r"kana:animanga_relations"
+):
     def __init__(self, relations: list[Relation]) -> None:
         super().__init__(
             ui.Select[View](
                 placeholder="Related",
-                custom_id="kana:relations",
+                custom_id="kana:animanga_relations",
                 options=self._to_options(relations),
+                row=1,
             ),
-            row=1,
         )
 
     def _to_options(self, relations: list[Relation]) -> list[discord.SelectOption]:
@@ -132,14 +135,13 @@ class ReminderButton(
     ):
         super().__init__(
             ui.Button[ui.View](
-                emoji=BELL,
+                emoji=BELL if is_active else NO_BELL,
                 style=discord.ButtonStyle.green
                 if is_active
                 else discord.ButtonStyle.gray,
                 custom_id=f"kana:r_{anime_id}_{user_id}",
                 row=2,
             ),
-            row=2,
         )
 
         self.anime_id = anime_id
@@ -170,10 +172,12 @@ class ReminderButton(
         anime_id: int,
         user_id: int,
     ) -> bool:
-        result = await bot.pool.fetchval(
-            "SELECT toggle_reminder($1, $2)", user_id, anime_id
-        )
-        return result == 1
+        reminder: Optional[Animanga] = bot.get_cog("Animanga")  # pyright: ignore[reportAssignmentType]
+        if not reminder:
+            raise ValueError("Animanga cog not loaded")
+
+        toggle = await reminder.toggle_reminder_for(user_id, anime_id)
+        return toggle
 
     @classmethod
     async def from_custom_id(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -195,6 +199,13 @@ class ReminderButton(
 
         return cls(is_active, anime_id, user_id)
 
+    def _re_add_button(self):
+        if not self.view:
+            return
+
+        self.view.remove_item(self)
+        self.view.add_item(self)
+
     async def callback(self, interaction: discord.Interaction[Bot]):  # pyright: ignore[reportIncompatibleMethodOverride]
         assert self.view
 
@@ -206,9 +217,8 @@ class ReminderButton(
             self.item.style = (
                 discord.ButtonStyle.green if is_toggled else discord.ButtonStyle.gray
             )
-
-            self.view.remove_item(self)
-            self.view.add_item(self)
+            self.item.emoji = BELL if is_toggled else NO_BELL
+            self._re_add_button()
 
             return await interaction.response.edit_message(view=self.view)
 
