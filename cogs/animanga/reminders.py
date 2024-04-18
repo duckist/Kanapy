@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import discord
-from discord import ui
 from discord.ext import tasks
 
 from utils.constants import BELL
 from libs.livechart import LiveChartClient, Anime
 
 from .. import BaseCog, logger
-from .frontend import ReminderButton
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from utils.subclasses import Bot
@@ -21,6 +19,7 @@ class AnimangaReminders(BaseCog):
         super().__init__(bot)
         self.client = LiveChartClient()
         self.titles: list[Anime] = []
+        self.currently_sleeping_for: Optional[int] = None
 
     async def toggle_reminder_for(
         self,
@@ -28,16 +27,18 @@ class AnimangaReminders(BaseCog):
         anime_id: int,
     ) -> bool:
         result = await self.bot.pool.fetchval(
-            "SELECT toggle_reminder($1, $2)", user_id, anime_id
+            "SELECT toggle_reminder($1, $2)",
+            user_id,
+            anime_id,
         )
 
-        if any(title for title in self.titles if title["anilist_id"] == anime_id):
-            self.restart_livechart_watcher()
+        if anime_id == self.currently_sleeping_for:
+            self.restart_user_reminders()
 
         return result == 1
 
     @tasks.loop(hours=1)
-    async def fetch_titles(self):
+    async def livechart_watcher(self):
         titles = await self.client.fetch_today(ignore_old=True)
 
         if len(titles) <= 3:
@@ -47,13 +48,11 @@ class AnimangaReminders(BaseCog):
             titles += await self.client.fetch_titles_after_day(2, ignore_old=True)
 
         if titles != self.titles:
-            self.restart_livechart_watcher()
+            self.restart_user_reminders()
 
         self.titles = titles
-        logger.info(f"Fetched {len(titles)} titles.")
 
-    async def send_reminders_for(self, anime: Anime):
-        assert anime["anilist_id"]
+    async def send_reminders_out_for(self, anime: Anime):
         users = await self.bot.pool.fetch(
             "SELECT user_id FROM anime_reminders WHERE anilist_id = $1",
             anime["anilist_id"],
@@ -63,7 +62,9 @@ class AnimangaReminders(BaseCog):
             return
 
         user_ids = [user["user_id"] for user in users]
-        logger.info(f"Sending reminders to {user_ids} users about {anime}.")
+        logger.info(
+            f"Sending reminders to {user_ids} users about {anime['title']['romaji']!r}."
+        )
 
         users = [
             self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
@@ -73,31 +74,18 @@ class AnimangaReminders(BaseCog):
         embed = discord.Embed(
             title=(
                 f"{BELL} Episode {', '.join(anime['episodes'])} of {anime['title']['romaji']} "
-                f"({anime['title']['native']}) has premiered {discord.utils.format_dt(anime['premiere'], 'R')}!"
+                f"({anime['title']['native']!r}) has premiered {discord.utils.format_dt(anime['premiere'], 'R')}!"
             ),
         ).set_thumbnail(url=anime["thumbnail"])
 
         for user in users:
-            view = ui.View(timeout=None)
-            view.add_item(
-                ReminderButton(
-                    True,
-                    anime["anilist_id"],
-                    user.id,
-                )
-            )
-
-            await user.send(embed=embed, view=view)
+            await user.send(embed=embed)
 
     @tasks.loop(minutes=5)
-    async def livechart_watcher(self):
+    async def user_reminders(self):
         titles = self.titles
 
         for title in titles:
-            logger.info(
-                f"Found a new title: {title['title']['romaji']!r}, checking if there are any users interested."
-            )
-
             users = await self.bot.pool.fetchval(
                 "SELECT COUNT(*) FROM anime_reminders WHERE anilist_id = $1",
                 title["anilist_id"],
@@ -108,27 +96,30 @@ class AnimangaReminders(BaseCog):
                 continue
 
             logger.info(
-                f"Sleeping until {title['premiere']}. title={title['title']['romaji']!r}, {users=}"
+                f"{users} users are interested in {title['title']['romaji']!r}, episode premieres at {title['premiere']}"
             )
 
+            self.currently_sleeping_for = title["anilist_id"]
             await discord.utils.sleep_until(title["premiere"])
-            await self.send_reminders_for(title)
 
-    @livechart_watcher.before_loop
+            await self.send_reminders_out_for(title)
+
+            self.currently_sleeping_for = None
+
+    @user_reminders.before_loop
     async def before_reminders_watcher(self):
         await self.bot.wait_until_ready()
 
-    def restart_livechart_watcher(self):
-        if self.livechart_watcher.is_running():
-            self.livechart_watcher.cancel()
-
-        self.livechart_watcher.start()
+    def restart_user_reminders(self):
+        self.user_reminders.restart()
+        self.currently_sleeping_for = None
 
     async def cog_load(self):
-        self.fetch_titles.start()
         self.livechart_watcher.start()
+        self.user_reminders.start()
 
     async def cog_unload(self):
-        self.fetch_titles.cancel()
+        self.user_reminders.cancel()
         self.livechart_watcher.cancel()
+
         await self.client.session.close()

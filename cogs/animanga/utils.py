@@ -199,18 +199,11 @@ class ReminderButton(
 
         return cls(is_active, anime_id, user_id)
 
-    def _re_add_button(self):
-        if not self.view:
-            return
-
-        self.view.remove_item(self)
-        self.view.add_item(self)
-
     async def callback(self, interaction: discord.Interaction[Bot]):  # pyright: ignore[reportIncompatibleMethodOverride]
         assert self.view
 
         is_toggled = await self.toggle_reminder(
-            interaction.client, self.anime_id, self.user_id
+            interaction.client, self.anime_id, interaction.user.id
         )
 
         if self.user_id == interaction.user.id:
@@ -218,16 +211,20 @@ class ReminderButton(
                 discord.ButtonStyle.green if is_toggled else discord.ButtonStyle.gray
             )
             self.item.emoji = BELL if is_toggled else NO_BELL
-            self._re_add_button()
 
-            return await interaction.response.edit_message(view=self.view)
+            await interaction.response.edit_message(view=self.view)
 
-        await interaction.response.send_message(
-            "Reminder set! I'll remind you when a future episode premieres."
+        args = {
+            "content": "Got it! I'll remind you when an episode of this anime is released."
             if is_toggled
-            else "Reminder removed.",
-            ephemeral=True,
-        )
+            else "Removing reminders for this anime.",
+            "ephemeral": True,
+        }
+
+        if interaction.response.is_done():
+            await interaction.followup.send(**args)  # type: ignore
+        else:
+            await interaction.response.send_message(**args)  # type: ignore
 
 
 class AnimangaEmbed(discord.Embed):
