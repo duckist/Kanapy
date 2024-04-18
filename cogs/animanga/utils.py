@@ -199,13 +199,6 @@ class ReminderButton(
 
         return cls(is_active, anime_id, user_id)
 
-    def _re_add_button(self):
-        if not self.view:
-            return
-
-        self.view.remove_item(self)
-        self.view.add_item(self)
-
     async def callback(self, interaction: discord.Interaction[Bot]):  # pyright: ignore[reportIncompatibleMethodOverride]
         assert self.view
 
