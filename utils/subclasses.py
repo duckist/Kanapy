@@ -12,9 +12,10 @@ from logging.handlers import QueueHandler
 from asyncio import Queue, Lock
 from aiohttp import ClientSession
 
-from typing import Any, Dict, Generator, Optional, Type, Union
+from typing import Any, Dict, Type, Union
 
-from cogs.animanga.anilist import AniList
+from utils import as_chunks, to_cb
+from libs.anilist import AniList
 
 from .constants import STARTUP_QUERY
 
@@ -23,11 +24,6 @@ log_handler = QueueHandler(queue)  # type: ignore
 
 logger = logging.getLogger("discord")  # TODO: do logging properly
 logger.addHandler(log_handler)
-
-
-def as_chunks(n: int, text: str) -> Generator[str, None, None]:
-    for i in range(0, len(text), n):
-        yield text[i : i + n]
 
 
 class Context(commands.Context["Bot"]):
@@ -114,7 +110,8 @@ class Bot(commands.Bot):
             self.guild = self.get_guild(GUILD_ID) or await self.fetch_guild(GUILD_ID)
 
     async def send_output(self):
-        avatar = lambda avatar_id: f"https://cdn.discordapp.com/embed/avatars/{avatar_id}.png"  # type: ignore
+        def avatar(avatar_id: int) -> str:
+            return f"https://cdn.discordapp.com/embed/avatars/{avatar_id}.png"
 
         # fmt: off
         # Mapping of ERROR_NO: (USERNAME, AVATAR)
@@ -133,10 +130,22 @@ class Bot(commands.Bot):
             name, avatar_url = ERROR_TYPE_MAPPING[log.levelno]
             message = log.getMessage()
 
-            for chunk in as_chunks(2000, message):
-                await self.stdout_webhook.send(
-                    content=chunk, username=name, avatar_url=avatar_url
-                )
+            if log.levelno >= 40:
+                for chunk in as_chunks(3990, message):
+                    embed = discord.Embed(
+                        description=to_cb(chunk, "py"), color=0xFF0000
+                    )
+
+                    await self.stdout_webhook.send(
+                        embed=embed, username=name, avatar_url=avatar_url
+                    )
+            else:
+                for chunk in as_chunks(2000, message):
+                    await self.stdout_webhook.send(
+                        username=name,
+                        avatar_url=avatar_url,
+                        content=chunk,
+                    )
 
     async def setup_hook(self):
         # called before the bot starts
@@ -165,7 +174,9 @@ class Bot(commands.Bot):
             self.loop.create_task(self.send_output())
 
         conn = await asyncpg.create_pool(
-            self.config["Bot"]["PSQL_URI"], min_size=1, max_size=5  # TODO: remove this
+            self.config["Bot"]["PSQL_URI"],
+            min_size=1,
+            max_size=5,  # TODO: remove this
         )
         if conn is None:
             raise RuntimeError("Could not connect to the DATABASE")

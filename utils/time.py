@@ -18,6 +18,6 @@ def deltaconv(seconds: int, *, brief: bool = False, short: bool = False) -> str:
     if short:
         for unit, amount in cleaned.items():
             if amount:
-                return sing(amount, unit, brief)
+                return sing(int(amount), unit, brief)
 
-    return " ".join(sing(amount, unit, brief) for unit, amount in cleaned.items())
+    return " ".join(sing(int(amount), unit, brief) for unit, amount in cleaned.items())

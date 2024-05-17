@@ -5,7 +5,9 @@ from aiohttp import ClientSession
 
 from typing import Any, Optional, TYPE_CHECKING
 
+from utils import cutoff
 from .. import logger
+
 from .types import (
     FetchResult,
     FetchRequestResult,
@@ -17,7 +19,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:
-    from .._utils.subclasses import Bot
+    from utils.subclasses import Bot
 
 SEARCH_QUERY = """
 query ($search: String, $type: MediaType) {
@@ -47,10 +49,13 @@ query ($search: %s, $type: MediaType) {
       id
     }
     description(asHtml: false)
+    nextAiringEpisode {
+      id
+    }
+    episodes
     id
     genres
     averageScore
-    episodes
     duration
     chapters
     status
@@ -196,7 +201,9 @@ class AniList:
 
     @classmethod
     async def search_auto_complete(
-        cls, interaction: Interaction["Bot"], current: str
+        cls,
+        interaction: Interaction["Bot"],
+        current: str,
     ) -> list[app_commands.Choice[str]]:
         """
         A wrapper around the `search` function for auto-completes.
@@ -215,24 +222,29 @@ class AniList:
             and interaction.command.parent
         )
 
-        SEARCH_TYPE_MAPPING = {
-            "anime": SearchType.ANIME,
-            "manga": SearchType.MANGA,
+        SEARCH_TYPE = {  # TODO: revert this
+            "animee": SearchType.ANIME,
+            "mangaa": SearchType.MANGA,
         }
 
         results = await cls.search(
             interaction.client.session,
             current,
-            SEARCH_TYPE_MAPPING[interaction.command.parent.name],
+            SEARCH_TYPE[interaction.command.parent.name],
         )
 
         return [
-            app_commands.Choice(name=name, value=f"{name} (ID: {series_id})")
+            app_commands.Choice(
+                name=cutoff(name, 100), value=f"{name} (ID: {series_id})"
+            )
             for series_id, name in results
         ]
 
     async def fetch(
-        self, search: str, *, search_type: SearchType
+        self,
+        search: str,
+        *,
+        search_type: SearchType,
     ) -> Optional[FetchResult]:
         """
         Fetches information about a Series.

@@ -1,45 +1,37 @@
+from __future__ import annotations
+
 import discord
 from discord.ext import commands
-
 
 from . import BaseCog
 
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ._utils.subclasses import Bot, Context
+    from utils.subclasses import Bot, Context
 
 
 class Moderation(BaseCog):
-    def __init__(self, bot: "Bot"):
+    def __init__(self, bot: Bot):
         super().__init__(bot)
-        self.bot = bot
         self.modules = {
             "snipe": "Lets users 'snipe' the last message that got deleted/edited within the last 2 minutes in a channel.",
         }
 
     @commands.command(aliases=["bp", "purgebots", "purgebot"])
     @commands.has_permissions(manage_messages=True)
-    @commands.bot_has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True, read_message_history=True)
+    @commands.cooldown(1, 5, commands.BucketType.channel)
     @commands.guild_only()
     async def botpurge(
         self,
-        ctx: "Context",
+        ctx: Context,
         bot: discord.Member,
         prefix: str,
-        amount: commands.Range[int, 30, 100],
+        amount: commands.Range[int, 1, 100],
     ):
         """
         Purges a set of bot commands along with their invokee commands.
-
-        Parameters
-        -----------
-        bot: discord.Member
-            The bot to purge
-        prefix: str
-            The prefix of the bot to purge
-        amount: int
-            The amount of posts to purge, must be under 100.
         """
 
         if isinstance(
@@ -47,9 +39,6 @@ class Moderation(BaseCog):
             discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,
         ):  # purely for linter
             return
-
-        if amount > 100:
-            return await ctx.reply("Please enter a smaller number")
 
         results: dict[str, int] = {}
 
@@ -63,6 +52,7 @@ class Moderation(BaseCog):
             return False
 
         await ctx.channel.purge(limit=amount, check=check)
+
         await ctx.send(
             embed=discord.Embed(
                 title="Purge Results",
@@ -73,17 +63,18 @@ class Moderation(BaseCog):
 
     @commands.command(aliases=["wp", "mp", "mudaepurge"])
     @commands.has_permissions(manage_messages=True)
-    @commands.bot_has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True, read_message_history=True)
+    @commands.cooldown(1, 5, commands.BucketType.channel)
     @commands.guild_only()
-    async def waifupurge(self, ctx: "Context", amount: int = 30):
+    async def waifupurge(
+        self,
+        ctx: Context,
+        amount: commands.Range[int, 30, 100] = 10,
+    ):
         """
         Purges a set of Mudae bot's spam along with the commands.
-
-        Parameters
-        -----------
-        amount: int
-            The amount of posts to purge.
         """
+
         await ctx.invoke(
             self.botpurge,
             discord.Object(id=432610292342587392),  # type: ignore
@@ -93,14 +84,42 @@ class Moderation(BaseCog):
 
     @commands.command()
     @commands.guild_only()
-    async def prefix(self, ctx: "Context", prefix: Optional[str]):
+    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True, read_message_history=True)
+    @commands.cooldown(1, 5, commands.BucketType.channel)
+    async def cleanup(
+        self,
+        ctx: Context,
+        amount: commands.Range[int, 1, 50] = 10,
+    ):
+        """
+        Cleans up my messages along with the messages that instigated the messages from the channel.
+        """
+        assert ctx.guild and not isinstance(
+            ctx.channel,
+            discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,
+        )
+
+        prefixes = await ctx.bot.get_prefix(ctx.message)
+
+        def check(message: discord.Message):
+            return not message.reference and (
+                any(message.content.startswith(prefix) for prefix in prefixes)
+                or message.author == ctx.me
+            )
+
+        messages = await ctx.channel.purge(limit=amount, check=check)
+
+        await ctx.send(
+            f"Done, deleted {len(messages)} messages.",
+            delete_after=5,
+        )
+
+    @commands.command()
+    @commands.guild_only()
+    async def prefix(self, ctx: Context, prefix: Optional[str]):
         """
         Changes the guild specific prefix. if no prefix is given, it will show the current prefix.
-
-        Parameters
-        -----------
-        prefix: Optional[str]
-            The prefix to change.
         """
 
         assert ctx.guild and isinstance(ctx.author, discord.Member)
@@ -131,7 +150,7 @@ class Moderation(BaseCog):
     )
     @commands.has_permissions(manage_guild=True)
     @commands.guild_only()
-    async def module(self, ctx: "Context"):
+    async def module(self, ctx: Context):
         """
         Configure modules.
         """
@@ -139,7 +158,7 @@ class Moderation(BaseCog):
 
     @module.command(name="list", aliases=["all"])
     @commands.has_permissions(manage_guild=True)
-    async def _list(self, ctx: "Context"):
+    async def _list(self, ctx: Context):
         """
         Lists all modules and their current status in the server.
         """
@@ -147,25 +166,20 @@ class Moderation(BaseCog):
             return
 
         WHITE_CHECK_MARK = "\u2705"
-        CROSS_EMOJI = "\u274C"
+        CROSS_EMOJI = "\u274c"
 
         desc = ""
         for module, description in self.modules.items():
-            desc += f"\n{WHITE_CHECK_MARK if module not in self.bot.disabled_modules.get(ctx.guild.id, []) else CROSS_EMOJI} {module}: {description}"
+            desc += f"\n{WHITE_CHECK_MARK if module not in self.bot.disabled_modules.get(ctx.guild.id, ['']) else CROSS_EMOJI} {module}: {description}"
 
         embed = discord.Embed(title="Modules", description=desc)
         await ctx.send(embed=embed)
 
     @module.command(aliases=["on"])
     @commands.has_permissions(manage_guild=True)
-    async def enable(self, ctx: "Context", module: str):
+    async def enable(self, ctx: Context, module: str):
         """
         Enables a module in the server.
-
-        Parameters
-        -----------
-        module: str
-            The name of the module to disable.
         """
         if not ctx.guild:
             return
@@ -174,7 +188,7 @@ class Moderation(BaseCog):
         if module not in self.modules:
             return await ctx.send(f"Module `{module}` does not exist.")
 
-        if module not in self.bot.disabled_modules.get(ctx.guild.id, []):
+        if module not in self.bot.disabled_modules.get(ctx.guild.id, [""]):
             return await ctx.send(f"Module `{module}` is already enabled.")
 
         q = """
@@ -185,18 +199,14 @@ class Moderation(BaseCog):
         """
         disabled_modules = await self.bot.pool.fetchval(q, module, ctx.guild.id)
         self.bot.disabled_modules[ctx.guild.id] = disabled_modules
+
         await ctx.send(f"Module `{module}` has been enabled.")
 
     @module.command(aliases=["off"])
     @commands.has_permissions(manage_guild=True)
-    async def disable(self, ctx: "Context", module: str):
+    async def disable(self, ctx: Context, module: str):
         """
         Disables a module in the server.
-
-        Parameters
-        -----------
-        module: str
-            The name of the module to disable.
         """
         if not ctx.guild:
             return
@@ -205,7 +215,7 @@ class Moderation(BaseCog):
         if module not in self.modules:
             return await ctx.send(f"Module `{module}` does not exist.")
 
-        if module in self.bot.disabled_modules.get(ctx.guild.id, []):
+        if module in self.bot.disabled_modules.get(ctx.guild.id, [""]):
             return await ctx.send(f"Module `{module}` is already disabled.")
 
         q = """
@@ -216,8 +226,9 @@ class Moderation(BaseCog):
         """
         disabled_modules = await self.bot.pool.fetchval(q, module, ctx.guild.id)
         self.bot.disabled_modules[ctx.guild.id] = disabled_modules
+
         await ctx.send(f"Module `{module}` has been disabled.")
 
 
-async def setup(bot: "Bot"):
+async def setup(bot: Bot):
     await bot.add_cog(Moderation(bot))

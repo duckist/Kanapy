@@ -6,13 +6,13 @@ from discord.ext import commands
 
 from typing import Any, Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from .._utils.subclasses import Bot, Context
-
 from .. import BaseCog
-from .spotify import SpotifyClient, SearchType
+from libs.spotify import SpotifyClient, SearchType
 
-from .._utils import cutoff
+from utils import cutoff
+
+if TYPE_CHECKING:
+    from utils.subclasses import Bot, Context
 
 
 class Dropdown(ui.Select["ResultView"]):
@@ -84,6 +84,7 @@ class SpotifySearch(BaseCog):
         query: str
             The song search query.
         """
+
         await ctx.invoke(self._spotify_search, query=query)
 
     @_spotify.command(name="search", aliases=["s", "track", "tc"])
@@ -240,8 +241,7 @@ class SpotifySearch(BaseCog):
         view.original_message = await ctx.send(resp[0]["url"], view=view)
 
 
-class Search(SpotifySearch):
-    ...
+class Search(SpotifySearch): ...
 
 
 async def setup(bot: "Bot"):
