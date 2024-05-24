@@ -222,9 +222,9 @@ class AniList:
             and interaction.command.parent
         )
 
-        SEARCH_TYPE = {  # TODO: revert this
-            "animee": SearchType.ANIME,
-            "mangaa": SearchType.MANGA,
+        SEARCH_TYPE = {
+            "anime": SearchType.ANIME,
+            "manga": SearchType.MANGA,
         }
 
         results = await cls.search(
