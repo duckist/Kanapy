@@ -28,9 +28,8 @@ class AnimangaFrontend(BaseCog):
         self.bot.add_dynamic_items(ReminderButton, RelationSelect)
 
     anime = app_commands.Group(
-        name="animee",
+        name="anime",
         description="...",
-        guild_ids=[774561547930304536],
     )
 
     @anime.command(name="search")
