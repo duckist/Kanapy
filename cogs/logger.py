@@ -18,8 +18,10 @@ if TYPE_CHECKING:
     from typing import Any
     from typing_extensions import Self
 
+    UserOrMember = discord.User | discord.Member
 
-GUILD_FILESIZE_LIMIT = 25 * 1024 * 1024  # as that's what basic guilds get.
+
+GUILD_FILESIZE_LIMIT = 25 * 1024 * 1024
 
 
 class NoAvatarData(Exception): ...
@@ -286,7 +288,7 @@ class Logger(BaseCog):
 
     async def upload_avatar(
         self,
-        member: discord.Member,
+        member: UserOrMember,
         file: discord.Asset,
         changed_at: datetime = discord.utils.utcnow(),
     ):
@@ -344,11 +346,13 @@ class Logger(BaseCog):
             await self.upload_avatar(member, member.display_avatar)
 
     @commands.Cog.listener()
-    async def on_member_avatar_update(
-        self, before: discord.Member, after: discord.Member
-    ):
+    async def on_member_avatar_update(self, before: UserOrMember, after: UserOrMember):
         avatar = None
-        if before.guild_avatar != after.guild_avatar:
+        if (
+            isinstance(before, discord.Member)
+            and isinstance(after, discord.Member)
+            and before.guild_avatar != after.guild_avatar
+        ):
             avatar = after.guild_avatar
         elif before.avatar != after.avatar:
             avatar = after.avatar
@@ -359,7 +363,7 @@ class Logger(BaseCog):
         await self.upload_avatar(after, avatar)
 
     @commands.Cog.listener()
-    async def on_member_name_update(self, before: discord.User, _: discord.User):
+    async def on_member_name_update(self, before: UserOrMember, _: UserOrMember):
         await self.bot.pool.execute(
             """
         INSERT INTO username_history (user_id, time_changed, name)
@@ -370,8 +374,13 @@ class Logger(BaseCog):
             before.name,
         )
 
-    @commands.Cog.listener()
-    async def on_user_update(self, before: discord.User, after: discord.User):
+    @commands.Cog.listener("on_user_update")
+    @commands.Cog.listener("on_member_update")
+    async def on_user_or_member_update(
+        self,
+        before: UserOrMember,
+        after: UserOrMember,
+    ):
         if before.name != after.name:
             self.bot.dispatch("member_name_update", before, after)
 
