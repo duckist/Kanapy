@@ -233,9 +233,13 @@ class AniList:
             SEARCH_TYPE[interaction.command.parent.name],
         )
 
+        _id = " (ID: {series_id})"
+
         return [
             app_commands.Choice(
-                name=cutoff(name, 100), value=f"{name} (ID: {series_id})"
+                name=cutoff(name, 100),
+                value=cutoff(name, 100 - len(_id.format(series_id=series_id)))
+                + _id.format(series_id=series_id),
             )
             for series_id, name in results
         ]
