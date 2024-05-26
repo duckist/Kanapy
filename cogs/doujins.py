@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import discord
 from discord.ext import commands
+from discord import ui
 
 from utils.subclasses import Bot as Bot
 
@@ -9,12 +10,12 @@ from . import BaseCog
 from utils.paginator import BasePaginator
 
 from libs.doujins import DoujinClient
-from libs.doujins.types import Gallery
+from libs.doujins.types import Gallery, Tag
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, Self
 
     from . import Bot, Context
 
@@ -38,25 +39,45 @@ class DoujinPaginator(BasePaginator[str]):
             .set_footer(text=f"\U00002764 {self.gallery.favourites}")
         )
 
-        for k, v in self.gallery.tags.items():
-            values = [
-                *map(
-                    lambda tag: f"[`{tag.name}`]({tag.url})",
-                    v,
-                )
-            ]
+        tags = self.gallery.tags.pop("tag")
 
-            if values:
-                self.BASE_EMBED.add_field(
-                    name=k.title(),
-                    value=",".join(values[:5]),
-                    inline=True,
-                )
+        for k, v in self.gallery.tags.items():
+            self._add_field(k, v)
+
+        self._add_field("tags", tags, inline=False)
+
+    def _add_field(
+        self,
+        name: str,
+        tags: list[Tag],
+        *,
+        inline: bool = True,
+    ):
+        values = [
+            *map(
+                lambda tag: f"[`{tag.name}`]({tag.url})",
+                tags,
+            )
+        ]
+
+        if values:
+            self.BASE_EMBED.add_field(
+                name=name.title(),
+                value=", ".join(values[:5]),
+                inline=inline,
+            )
 
     async def format_page(self, page: str) -> dict[str, Any]:
         return {
             "embed": self.BASE_EMBED.set_image(url=page),
         }
+
+    @ui.button(emoji="\U0001f5d1", style=discord.ButtonStyle.danger)
+    async def delete(self, interaction: discord.Interaction, _: ui.Button["Self"]):
+        self.stop()
+
+        if interaction.message:
+            await interaction.message.delete()
 
 
 class Doujins(BaseCog):
