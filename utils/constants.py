@@ -19,6 +19,12 @@ VALID_EDIT_KWARGS: Dict[str, Any] = {
     "view": None,
 }
 
+NSFW_ERROR_MSG = (
+    "The requested **%s** has been marked as NSFW. "
+    "Switch to an NSFW channel or re-run the command in my DMs."
+)
+
+
 # emotes
 WEBSOCKET = "<a:_:963608475982774282>"
 CHAT_BOX = "<:_:963608317370974240>"

@@ -6,6 +6,8 @@ from discord import app_commands
 from .. import BaseCog
 from .utils import View, AnimangaEmbed, ReminderButton, RelationSelect, is_nsfw
 
+from utils.constants import NSFW_ERROR_MSG
+
 from libs.anilist import AniList
 from libs.anilist.types import SearchType
 
@@ -13,12 +15,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from utils.subclasses import Bot
-
-
-NSFW_ERROR_MSG = (
-    "The requested **%s** has been marked as NSFW. "
-    "Switch to an NSFW channel or re-run the command in my DMs."
-)
 
 
 class AnimangaFrontend(BaseCog):

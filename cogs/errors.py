@@ -2,8 +2,10 @@ from discord.ext import commands
 
 from jishaku.features.root_command import natural_size as ns  # pyright: ignore[reportPrivateImportUsage]
 
-from . import BaseCog
 from utils import deltaconv
+from utils.constants import NSFW_ERROR_MSG
+
+from . import BaseCog
 from .download import FileTooLarge
 
 from typing import TYPE_CHECKING
@@ -42,6 +44,9 @@ class Errors(BaseCog):
             return await ctx.reply(
                 f"You need the `{fmt}` permissions to use this command."
             )
+
+        if isinstance(error, commands.NSFWChannelRequired):
+            return await ctx.send(NSFW_ERROR_MSG % "command")
 
         if isinstance(error, commands.CheckFailure):
             return await ctx.reply("You do not have permission to use this command.")

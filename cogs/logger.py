@@ -1,22 +1,23 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, TypedDict
 
 import discord
-from discord import ui
 from discord.ext import commands
 
 import asyncio
-import math
 
 from datetime import datetime
 from io import BytesIO
 
+from typing import TYPE_CHECKING
+
+from utils.paginator import ChunkedPaginator
 from . import BaseCog, logger
 
 if TYPE_CHECKING:
-    from utils.subclasses import Bot
     from typing import Any
     from typing_extensions import Self
+
+    from utils.subclasses import Bot
 
     UserOrMember = discord.User | discord.Member
 
@@ -27,56 +28,20 @@ GUILD_FILESIZE_LIMIT = 25 * 1024 * 1024
 class NoAvatarData(Exception): ...
 
 
-class AvatarData(TypedDict):
-    user: discord.User
-    avatars: list[tuple[str, datetime]]
-    count: int  # total count of avatars
-    idx: int  # current avatar of offset n
-    offset: int  # current offset
+class AvatarPaginator(ChunkedPaginator[tuple[str, datetime]]):
+    def __init__(
+        self,
+        bot: "Bot",
+        user: discord.User,
+        message: discord.Message,
+        *args: Any,
+        **kwargs: Any,
+    ):
+        self.bot = bot
+        self.user = user
+        self.message = message
 
-
-class SkipToPage(ui.Modal, title="Skip to page"):
-    page: ui.TextInput[Self]
-    total: int
-
-    @classmethod
-    def with_data(cls, total: int) -> Self:
-        inst = cls()
-        inst.page = ui.TextInput(
-            label=f"Please enter a page within the range 1-{total}",
-        )
-        inst.total = total
-
-        inst.add_item(inst.page)
-        return inst
-
-    async def on_submit(self, interaction: discord.Interaction):
-        value = self.page.value
-        total = self.total
-
-        if not value.isdigit():
-            raise ValueError
-
-        value = int(value)
-        if not (total >= value > 0):
-            raise ValueError
-
-        await interaction.response.defer()
-
-    async def on_error(self, interaction: discord.Interaction, error: Exception):
-        if isinstance(error, ValueError):
-            await interaction.response.send_message(
-                f"Please enter a number between 1-{self.total}", ephemeral=True
-            )
-        else:
-            return await super().on_error(interaction, error)
-
-
-class AvatarPaginator(ui.View):
-    PER_CHUNK = 15
-    bot: "Bot"
-    data: AvatarData
-    message: discord.Message
+        super().__init__(*args, **kwargs)
 
     @classmethod
     async def populate_data(
@@ -87,28 +52,42 @@ class AvatarPaginator(ui.View):
         *args: Any,
         **kwargs: Any,
     ) -> Self:
-        inst = cls(*args, **kwargs)
-        inst.bot = bot
-        inst.message = message
-
-        count = await inst.get_count(user.id)
+        count = await bot.pool.fetchval(
+            """
+            SELECT
+                COUNT(*)
+            FROM avatar_history
+            WHERE
+                user_id = $1
+                AND changed_at < $2;
+        """,
+            user.id,
+            message.created_at,
+        )
 
         if count <= 0:
             raise NoAvatarData
 
-        inst.data = {
-            "avatars": [],
-            "user": user,
-            "count": count,
-            "idx": 0,
-            "offset": 0,
-        }
-        inst.data["avatars"] = await inst.fetch_chunk(0)
-        inst.update_buttons()
+        return cls(
+            bot,
+            user,
+            message,
+            *args,
+            count=count,
+            **kwargs,
+        )
 
-        return inst
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user == self.message.author:
+            return True
 
-    async def fetch_chunk(self, offset: int) -> list[tuple[str, datetime]]:
+        await interaction.response.send_message(
+            "Please invoke the command yourself.", ephemeral=True
+        )
+
+        return False  # love u to death type-checker
+
+    async def fetch_chunk(self, chunk: int) -> list[tuple[str, datetime]]:
         records = await self.bot.pool.fetch(
             """
             SELECT avatar_url, changed_at
@@ -121,128 +100,37 @@ class AvatarPaginator(ui.View):
             LIMIT $3
                 OFFSET $4;
         """,
-            self.data["user"].id,
+            self.user.id,
             self.message.created_at,
-            self.PER_CHUNK,
-            offset,
+            self.per_chunk,
+            chunk,
         )
 
-        return [(record["avatar_url"], record["changed_at"]) for record in records]
-
-    async def get_count(self, user_id: int):
-        count = await self.bot.pool.fetchval(
-            """
-            SELECT
-                COUNT(*)
-            FROM avatar_history
-            WHERE
-                user_id = $1
-                AND changed_at < $2;
-        """,
-            user_id,
-            self.message.created_at,
-        )
-
-        return count
-
-    async def _goto(self, page: int, itx: discord.Interaction | None = None):
-        total = self.data["count"]
-        if (page + 1) > total or page < 0:
-            if itx:
-                await itx.response.send_message(
-                    f"Page overflow! you can't move to page `{page + 1}` from page `{self.data['idx'] + 1}`.",
-                    ephemeral=True,
-                )
-
-            return
-
-        self.data["idx"] = page
-        page += 1
-
-        curr_offset = self.data["offset"]
-        if not ((curr_offset + self.PER_CHUNK) > page > curr_offset):
-            offset = abs(
-                (math.ceil(page / self.PER_CHUNK) - 1) * self.PER_CHUNK,
+        return [
+            (
+                record["avatar_url"],
+                record["changed_at"],
             )
-            self.data["avatars"] = await self.fetch_chunk(offset)
-            self.data["offset"] = offset
+            for record in records
+        ]
 
-        self.update_buttons()
-
-        message = {
-            "embed": self.create_embed(),
-            "view": self,
-        }
-
-        if itx:
-            if itx.response.is_done() and itx.message:
-                await itx.message.edit(**message)  # type: ignore
-            else:
-                await itx.response.edit_message(**message)  # type: ignore
-
-    def create_embed(self) -> discord.Embed:
-        data = self.data["avatars"][self.data["idx"] % self.PER_CHUNK]
-
-        return (
+    async def format_page(self, page: tuple[str, datetime]) -> dict[str, Any]:
+        embed = (
             discord.Embed(
-                title=f"{self.data['user'].name}'s Avatar History",
-                description=f"Changed At: {discord.utils.format_dt(data[1])} ({discord.utils.format_dt(data[1], 'R')})",
+                title=f"{self.user.name}'s Avatar History",
+                description=f"Changed At: {discord.utils.format_dt(page[1])} ({discord.utils.format_dt(page[1], 'R')})",
                 color=int(self.bot.config["Bot"]["DEFAULT_COLOR"], 16),
             )
-            .set_image(url=data[0])
+            .set_image(url=page[0])
             .set_footer(
                 text=f"Requested By: {self.message.author.name} ({self.message.author.id})"
             )
         )
 
-    def update_buttons(self):
-        self.first.disabled = False
-        self.prev.disabled = False
-        self.next.disabled = False
-        self.last.disabled = False
-
-        if self.data["idx"] == 0:
-            self.first.disabled = True
-            self.prev.disabled = True
-
-        if (self.data["idx"] + 1) == self.data["count"]:
-            self.next.disabled = True
-            self.last.disabled = True
-
-        self.page.label = f"{self.data['idx'] + 1}/{self.data['count']}"
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user == self.message.author:
-            return True
-
-        await interaction.response.send_message(
-            "Please invoke the command yourself.", ephemeral=True
-        )
-        return False  # love u type-checker
-
-    @ui.button(label="<<")
-    async def first(self, itx: discord.Interaction, _: ui.Button[Self]):
-        await self._goto(0, itx)
-
-    @ui.button(label="<")
-    async def prev(self, itx: discord.Interaction, _: ui.Button[Self]):
-        await self._goto(self.data["idx"] - 1, itx)
-
-    @ui.button(label="\u200b")
-    async def page(self, itx: discord.Interaction, _: ui.Button[Self]):
-        modal = SkipToPage.with_data(self.data["count"])
-        await itx.response.send_modal(modal)
-        await modal.wait()
-
-        await self._goto(int(modal.page.value) - 1, itx)
-
-    @ui.button(label=">")
-    async def next(self, itx: discord.Interaction, _: ui.Button[Self]):
-        await self._goto(self.data["idx"] + 1, itx)
-
-    @ui.button(label=">>")
-    async def last(self, itx: discord.Interaction, _: ui.Button[Self]):
-        await self._goto(self.data["count"] - 1, itx)
+        return {
+            "embed": embed,
+            "view": self,
+        }
 
 
 class RotatingWebhook:
@@ -394,7 +282,7 @@ class Logger(BaseCog):
         user: discord.User = commands.Author,
     ):
         try:
-            view = await AvatarPaginator().populate_data(
+            paginator = await AvatarPaginator.populate_data(
                 ctx.bot,
                 ctx.message,
                 user,
@@ -402,10 +290,7 @@ class Logger(BaseCog):
         except NoAvatarData:
             await ctx.send("No avatar found")
         else:
-            await ctx.send(
-                embed=view.create_embed(),
-                view=view,
-            )
+            await paginator.send(ctx)
 
 
 async def setup(bot: Bot):
