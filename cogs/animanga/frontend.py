@@ -23,6 +23,34 @@ class AnimangaFrontend(BaseCog):
         self.anilist = self.bot.anilist
         self.bot.add_dynamic_items(ReminderButton, RelationSelect)
 
+    async def _search(
+        self,
+        interaction: discord.Interaction[Bot],
+        query: str,
+        *,
+        search_type: SearchType,
+    ):
+        await interaction.response.defer()
+
+        media = await self.anilist.fetch(query, search_type=search_type)
+        if not media:
+            return await interaction.edit_original_response(
+                content=f"No {search_type.name.lower()} found."
+            )
+
+        if is_nsfw(interaction, media):
+            return await interaction.edit_original_response(
+                content=NSFW_ERROR_MSG % search_type.name.lower()
+            )
+
+        embed = AnimangaEmbed.from_media(media)
+        view = await View.from_media(interaction, media)
+
+        await interaction.edit_original_response(
+            embed=embed,
+            view=view,
+        )
+
     anime = app_commands.Group(
         name="anime",
         description="...",
@@ -39,23 +67,11 @@ class AnimangaFrontend(BaseCog):
         query: str
             The Anime to search for.
         """
-        await interaction.response.defer()
 
-        result = await self.anilist.fetch(query, search_type=SearchType.ANIME)
-        if not result:
-            return await interaction.edit_original_response(content="No anime found.")
-
-        if is_nsfw(interaction, result):
-            return await interaction.edit_original_response(
-                content=NSFW_ERROR_MSG % "anime"
-            )
-
-        embed = AnimangaEmbed.from_result(result)
-        view = await View.from_result(interaction, result)
-
-        await interaction.edit_original_response(
-            embed=embed,
-            view=view,  # pyright: ignore[reportArgumentType]
+        return self._search(
+            interaction,
+            query,
+            search_type=SearchType.ANIME,
         )
 
     manga = app_commands.Group(
@@ -74,21 +90,9 @@ class AnimangaFrontend(BaseCog):
         query: str
             The Manga to search for.
         """
-        await interaction.response.defer()
 
-        result = await self.anilist.fetch(query, search_type=SearchType.MANGA)
-        if not result:
-            return await interaction.edit_original_response(content="No Manga found.")
-
-        if is_nsfw(interaction, result):
-            return await interaction.edit_original_response(
-                content=NSFW_ERROR_MSG % "manga"
-            )
-
-        view = await View.from_result(interaction, result)
-
-        embed = AnimangaEmbed.from_result(result)
-        await interaction.edit_original_response(
-            embed=embed,
-            view=view,  # pyright: ignore[reportArgumentType]
+        return self._search(
+            interaction,
+            query,
+            search_type=SearchType.ANIME,
         )

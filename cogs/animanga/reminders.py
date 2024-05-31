@@ -115,11 +115,15 @@ class AnimangaReminders(BaseCog):
         self.currently_sleeping_for = None
 
     async def cog_load(self):
+        """
         self.livechart_watcher.start()
         self.user_reminders.start()
+        """
 
     async def cog_unload(self):
+        """
         self.user_reminders.cancel()
         self.livechart_watcher.cancel()
 
         await self.client.session.close()
+        """

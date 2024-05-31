@@ -7,7 +7,7 @@ import re
 from urllib.parse import quote
 
 from utils.constants import BELL, BOOK, CAMERA, NO_BELL
-from libs.anilist.types import FetchResult, Relation, SearchType
+from libs.anilist.types import Media, Relation, SearchType
 
 from typing import TYPE_CHECKING, Optional, Self
 
@@ -18,31 +18,33 @@ if TYPE_CHECKING:
 
 class View(ui.View):
     @classmethod
-    async def from_result(
+    async def from_media(
         cls,
         interaction: discord.Interaction[Bot],
-        result: FetchResult,
+        media: Media,
     ) -> Optional[Self]:
         view = None
-        if result["relations"]:
+        if media.relations:
             view = view or cls(timeout=None)
-            view.add_item(RelationSelect(result["relations"]))
+            view.add_item(RelationSelect(media.relations))
 
-        if result["trailer"]:
+        if media.trailer:
             view = view or cls(timeout=None)
             view.add_item(
                 ui.Button(
                     label="Trailer",
-                    url=result["trailer"].strip(),
+                    url=media.trailer.strip(),
                     row=2,
                 )
             )
 
-        if result["nextAiringEpisode"]:
+        if media.next_airing_episode:
             view = view or cls(timeout=None)
             view.add_item(
                 await ReminderButton.for_user(
-                    interaction.client, result["id"], interaction.user.id
+                    interaction.client,
+                    media.id,
+                    interaction.user.id,
                 )
             )
 
@@ -50,7 +52,8 @@ class View(ui.View):
 
 
 class RelationSelect(
-    ui.DynamicItem[ui.Select[View]], template=r"kana:animanga_relations"
+    ui.DynamicItem[ui.Select[View]],
+    template=r"kana:animanga_relations",
 ):
     def __init__(self, relations: list[Relation]) -> None:
         super().__init__(
@@ -65,10 +68,10 @@ class RelationSelect(
     def _to_options(self, relations: list[Relation]) -> list[discord.SelectOption]:
         return [
             discord.SelectOption(
-                label=relation["title"],
-                description=relation["relation_type"].replace("_", " ").title(),
-                emoji=BOOK if relation["type"] == "MANGA" else CAMERA,
-                value=f"{relation['type']}_{relation['id']}",
+                label=relation.title,
+                description=relation.relation_type.replace("_", " ").title(),
+                emoji=BOOK if relation.type == "MANGA" else CAMERA,
+                value=f"{relation.type}_{relation.id}",
                 default=False,
             )
             for relation in relations
@@ -81,20 +84,20 @@ class RelationSelect(
         search_type: str,
         *,
         attempt: int = 0,
-    ) -> Optional[FetchResult]:
-        result = await interaction.client.anilist.fetch(
+    ) -> Optional[Media]:
+        media = await interaction.client.anilist.fetch(
             f"x (ID: {search_id})",  # bit jank but who is gonna stop me
             search_type=SearchType.ANIME
             if search_type == "ANIME"
             else SearchType.MANGA,
         )
 
-        if not result and attempt < 3:
+        if not media and attempt < 3:
             return await self._query_anilist(
                 interaction, search_id, search_type, attempt=attempt
             )
 
-        return result
+        return media
 
     @classmethod
     async def from_custom_id(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -109,15 +112,15 @@ class RelationSelect(
         await interaction.response.defer(ephemeral=True)
         search_type, search_id = self.item.values[0].split("_")
 
-        result = await self._query_anilist(interaction, search_id, search_type)
+        media = await self._query_anilist(interaction, search_id, search_type)
 
-        if not result:
+        if not media:
             return await interaction.edit_original_response(view=self.view)
 
-        view = await View.from_result(interaction, result)
+        view = await View.from_media(interaction, media)
 
         await interaction.followup.send(
-            embed=AnimangaEmbed.from_result(result),
+            embed=AnimangaEmbed.from_media(media),
             ephemeral=True,
             view=view,  # pyright: ignore[reportArgumentType]
         )
@@ -203,7 +206,9 @@ class ReminderButton(
         assert self.view
 
         is_toggled = await self.toggle_reminder(
-            interaction.client, self.anime_id, interaction.user.id
+            interaction.client,
+            self.anime_id,
+            interaction.user.id,
         )
 
         if self.user_id == interaction.user.id:
@@ -229,51 +234,50 @@ class ReminderButton(
 
 class AnimangaEmbed(discord.Embed):
     @classmethod
-    def from_result(cls, data: FetchResult) -> Self:
+    def from_media(cls, data: Media) -> Self:
         embed = cls(
-            title=data["title"],
-            description=data["description"],
-            color=discord.Color.from_str(data["color"]) if data["color"] else 0xE6E6E6,
-            url=data["siteUrl"],
+            title=data.title,
+            description=data.description,
+            color=discord.Color.from_str(data.color) if data.color else 0xE6E6E6,
+            url=data.site_url,
         )
 
-        embed.set_thumbnail(url=data["coverImage"])
-        embed.set_image(url=data["bannerImage"])
+        embed.set_thumbnail(url=data.cover_image)
+        embed.set_image(url=data.banner_image)
 
         embed.add_field(
             name="Genres",
             value=", ".join(
-                f"[{genre}](https://anilist.co/search/{data['type'].name.lower()}?genres={quote(genre)})"
-                for genre in data["genres"]
+                f"[{genre}](https://anilist.co/search/{data.type.name.lower()}?genres={quote(genre)})"
+                for genre in data.genres
             ),
         )
+
         embed.add_field(
             name="Score",
-            value=f"{data['averageScore']}/100" if data["averageScore"] else "NaN",
+            value=f"{data.average_score}/100" if data.average_score else "NaN",
         )
-        embed.add_field(name="Status", value=data["status"])
+        embed.add_field(name="Status", value=data.status)
 
-        if data["episodes"]:
-            embed.add_field(name="Episodes", value=data["episodes"])
+        if data.episodes:
+            embed.add_field(name="Episodes", value=data.episodes)
 
-        if data["studios"]:
-            embed.add_field(
-                name="Studio",
-                value=data["studios"][0][
-                    "formatted"
-                ],  # always going to be the main studio
-            )
+        if data.chapters:
+            embed.add_field(name="Chapters", value=data.chapters)
 
-        if data["chapters"]:
-            embed.add_field(name="Chapters", value=data["chapters"])
+        if data.studios:
+            embed.add_field(name="Studio", value=data.studios[0].formatted)
 
         return embed
 
 
-def is_nsfw(interaction: discord.Interaction, result: FetchResult) -> bool:
+def is_nsfw(
+    interaction: discord.Interaction,
+    media: Media,
+) -> bool:
     assert interaction.channel
 
-    if result["isAdult"] and not (
+    if media.is_adult and not (
         isinstance(
             interaction.channel,
             discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,

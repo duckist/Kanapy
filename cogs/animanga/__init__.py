@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from utils.subclasses import Bot
 
 
-class Animanga(AnimangaFrontend): ...  # , AnimangaReminders
+class Animanga(AnimangaFrontend, AnimangaReminders): ...
 
 
 async def setup(bot: "Bot"):

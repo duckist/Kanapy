@@ -1,21 +1,15 @@
-import re
-
 from discord import Interaction, app_commands
 from aiohttp import ClientSession
 
 from typing import Any, Optional, TYPE_CHECKING
 
 from utils import cutoff
-from .. import logger
 
+from .utils import QUERY_PATTERN
 from .types import (
-    FetchResult,
-    FetchRequestResult,
-    RawRelationEdge,
-    Relation,
     SearchType,
-    StudioEdge,
-    Trailer,
+    Media,
+    MediaResponse,
 )
 
 if TYPE_CHECKING:
@@ -87,12 +81,6 @@ query ($search: %s, $type: MediaType) {
 }
 """
 
-QUERY_PATTERN = re.compile(r".* \(ID: ([0-9]+)\)")
-TAG_PATTERN = re.compile(
-    r"\<(?P<tag>[a-zA-Z]+)(?: href=\"(?P<url>.*)\")?\>(?:(?P<text>[\s\S]+?)\<\/\1\>)?",
-    flags=re.M | re.S | re.U,
-)
-
 
 def format_query(query: str) -> tuple[str, Optional[str]]:
     match = QUERY_PATTERN.fullmatch(query)
@@ -102,102 +90,49 @@ def format_query(query: str) -> tuple[str, Optional[str]]:
     return (FETCH_QUERY % ("String", "search"), None)
 
 
-def formatter(match: re.Match[Any]) -> str:
-    items = match.groupdict()
-    if items["tag"] == "a":
-        return f"[{items['text']}]({items['url']})"
-    elif items["tag"] == "br":
-        return "\n"
-    elif items["tag"] == "i":
-        return f"*{items['text']}*"
-    elif items["tag"] == "b":
-        return f"**{items['text']}**"
-
-    return items["text"]
-
-
-def cleanup_html(description: str) -> str:
-    final, no = TAG_PATTERN.subn(formatter, description)
-    if no > 0:
-        return cleanup_html(final)
-
-    return final.replace("\n\n", "\n")
-
-
-def parse_studios(edge: StudioEdge):
-    name = edge.get("node", {}).get("name")
-    url = edge.get("node", {}).get("siteUrl")
-    return {
-        "name": name,
-        "url": url,
-        "formatted": f"[{name}]({url})",
-        "main": edge.get("isMain", False),
-    }
-
-
-def parse_relation_edges(edge: RawRelationEdge) -> Relation:
-    return {
-        "id": edge["node"]["id"],
-        "title": edge["node"]["title"]["romaji"],
-        "relation_type": edge["relationType"],
-        "type": edge["node"]["type"],
-    }
-
-
-def create_trailer_url(data: Trailer) -> str:
-    if data["site"] == "youtube":
-        return "https://www.youtube.com/watch?v=" + data["id"]
-    elif data["site"] == "dailymotion":
-        return "https://www.dailymotion.com/video/" + data["id"]
-
-    logger.error(f"Found a different trailer site, data: {data}")
-    return ""
+BASE_URL = "https://graphql.anilist.co/"
 
 
 class AniList:
+    SEARCH_TYPE = {
+        "anime": SearchType.ANIME,
+        "manga": SearchType.MANGA,
+    }
+
     def __init__(self, session: ClientSession):
         self.session = session
 
-    @classmethod
-    async def search(
-        cls, session: ClientSession, search: str, search_type: SearchType
-    ) -> list[tuple[int, str]]:
-        """
-        Searches for a Series, this won't return any information but rather titles.
-
-        Parameteres
-        ------------
-        session: ClientSession
-            A `aiohttp.ClientSession` object to do the request with.
-
-        search: str
-            The search query.
-
-        search_type: SEARCH_TYPE
-            An Enum of either ANIME or MANGA.
-        """
-
-        req = await session.post(
-            "https://graphql.anilist.co/",
+    @staticmethod
+    async def query(
+        session: ClientSession,
+        query: str,
+        *,
+        variables: dict[str, Any],
+        search_type: SearchType = SearchType.ANIME,
+    ):
+        async with session.post(
+            BASE_URL,
             json={
-                "query": SEARCH_QUERY,
+                "query": "query",
                 "variables": {
-                    "search": search if search else None,
+                    **variables,
                     "type": search_type.name,
                 },
             },
-        )
+        ) as req:
+            if req.status != 200:
+                raise Exception(
+                    f"Recieved a non 200 response: {req.status=} \n{await req.text()}"
+                )
 
-        resp = await req.json()
-        if resp.get("errors"):
-            logger.error(
-                f"Search result {search!r} ({search_type.name}) yielded an error: \n{resp}"
-            )
-            return []
+            data = await req.json()
 
-        data = resp.get("data", {}).get("Page", {}).get("media", [])
+            if data.get("errors"):
+                raise Exception(
+                    f"Search yielded errors:\n{query=}\n{variables=}\n{await req.text()}"
+                )
 
-        return [(result["id"], result["title"]["romaji"]) for result in data]
+            return data
 
     @classmethod
     async def search_auto_complete(
@@ -206,11 +141,11 @@ class AniList:
         current: str,
     ) -> list[app_commands.Choice[str]]:
         """
-        A wrapper around the `search` function for auto-completes.
+        A wrapper around the `search` function for slash auto-complete.
 
         Parameteres
         ------------
-        interaction: discord.Interaction
+        interaction: Interaction["Bot]
             The Interaction instance.
 
         current: str
@@ -222,15 +157,13 @@ class AniList:
             and interaction.command.parent
         )
 
-        SEARCH_TYPE = {
-            "anime": SearchType.ANIME,
-            "manga": SearchType.MANGA,
-        }
-
-        results = await cls.search(
+        results = await cls.query(
             interaction.client.session,
-            current,
-            SEARCH_TYPE[interaction.command.parent.name],
+            SEARCH_QUERY,
+            variables={
+                "search": current or None,
+            },
+            search_type=cls.SEARCH_TYPE[interaction.command.parent.name],
         )
 
         _id = " (ID: {series_id})"
@@ -249,7 +182,7 @@ class AniList:
         search: str,
         *,
         search_type: SearchType,
-    ) -> Optional[FetchResult]:
+    ) -> Optional[Media]:
         """
         Fetches information about a Series.
 
@@ -264,36 +197,20 @@ class AniList:
 
         query, animanga_id = format_query(search)
 
-        req = await self.session.post(
-            "https://graphql.anilist.co/",
-            json={
-                "query": query,
-                "variables": {
-                    "search": animanga_id or search,
-                    "type": search_type.name,
-                },
+        req = await self.query(
+            self.session,
+            query,
+            variables={
+                "search": animanga_id or search,
             },
+            search_type=search_type,
         )
 
-        resp = await req.json()
-        if resp.get("errors"):
-            return logger.error(
-                f"Fetch result {search!r} ({search_type}) yielded an error: \n{resp}"
-            )
-
-        data: Optional[FetchRequestResult] = resp.get("data", {}).get("Media")
+        data: Optional[MediaResponse] = req.get("Media")
         if not data:
-            return logger.error(data)
+            return None
 
-        return {  # type: ignore
-            **data,
-            "type": search_type,
-            "title": data.get("title", {}).get("romaji", "N/A"),
-            "coverImage": data["coverImage"]["extraLarge"],
-            "color": data["coverImage"]["color"],
-            "description": cleanup_html(data["description"] or ""),
-            "status": data["status"].title().replace("_", " "),
-            "trailer": create_trailer_url(data["trailer"]) if data["trailer"] else None,
-            "relations": list(map(parse_relation_edges, data["relations"]["edges"])),
-            "studios": list(map(parse_studios, data.get("studios", {}).get("edges"))),
-        }
+        return Media.from_data(
+            data,
+            search_type=search_type,
+        )
