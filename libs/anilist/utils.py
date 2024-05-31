@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-QUERY_PATTERN = re.compile(r".* \(ID: ([0-9]+)\)")
+QUERY_PATTERN = re.compile(
+    r".* \(ID: ([0-9]+)\)",
+)
 
 TAG_PATTERN = re.compile(
     r"\<(?P<tag>[a-zA-Z]+)(?: href=\"(?P<url>.*)\")?\>(?:(?P<text>[\s\S]+?)\<\/\1\>)?",
