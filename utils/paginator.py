@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import discord
-# import inspect
-
 from discord import ui
-from discord.ext import commands
-
 
 from typing import TYPE_CHECKING, TypeVar, Generic
 
 if TYPE_CHECKING:
     from typing import Any, Self
-    from .subclasses import Bot
 
 
 T = TypeVar("T")
@@ -22,7 +17,7 @@ class SkipToPage(ui.Modal, title="Skip to page"):
     total: int
 
     @classmethod
-    def with_data(cls, total: int) -> Self:
+    def from_total(cls, total: int) -> Self:
         inst = cls()
         inst.page = ui.TextInput(
             label=f"Please enter a page within the range 1-{total}",
@@ -66,25 +61,26 @@ class BasePaginator(ui.View, Generic[T]):
         self.data = data
         self.count = count or len(data)
         self.page = page
+        self.msg = None
         super().__init__(**kwargs)
 
         self.update_buttons()
 
     async def send(
         self,
-        ctx: commands.Context["Bot"],
+        dest: discord.abc.Messageable,
         *args: Any,
         **kwargs: Any,
     ):
         response = await self.format_page(
             self.data[self.page - 1],
         )
-        response.setdefault("view", self)
 
-        await ctx.send(
+        self.msg = await dest.send(
             *args,
-            **response,
+            view=self,
             **kwargs,
+            **response,
         )
 
     async def format_page(self, page: T) -> dict[str, Any]:
@@ -115,37 +111,44 @@ class BasePaginator(ui.View, Generic[T]):
         response = await self.format_page(
             self.data[self.page - 1],
         )
-        response.setdefault("view", self)
 
-        await self.respond_or_edit(interaction, **response)
+        await self.respond_or_edit(interaction, view=self, **response)
 
     def update_buttons(self):
-        self.first.disabled = False
-        self.prev.disabled = False
-        self.next.disabled = False
-        self.last.disabled = False
+        self._first.disabled = False
+        self._prev.disabled = False
+        self._next.disabled = False
+        self._last.disabled = False
 
         if self.page == 1:
-            self.first.disabled = True
-            self.prev.disabled = True
+            self._first.disabled = True
+            self._prev.disabled = True
 
         if self.page == self.count:
-            self.next.disabled = True
-            self.last.disabled = True
+            self._next.disabled = True
+            self._last.disabled = True
 
         self._page.label = f"{self.page}/{self.count}"
 
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            if hasattr(child, "disabled"):
+                child.disabled = True  # type: ignore
+
+        if self.msg:
+            await self.msg.edit(view=self)
+
     @ui.button(label="<<")
-    async def first(self, interaction: discord.Interaction, _: ui.Button[Self]):
+    async def _first(self, interaction: discord.Interaction, _: ui.Button[Self]):
         await self._go_to_item(interaction, 1)
 
     @ui.button(label="<")
-    async def prev(self, interaction: discord.Interaction, _: ui.Button[Self]):
+    async def _prev(self, interaction: discord.Interaction, _: ui.Button[Self]):
         await self._go_to_item(interaction, self.page - 1)
 
     @ui.button(label="\u200b")
     async def _page(self, interaction: discord.Interaction, _: ui.Button[Self]):
-        modal = SkipToPage.with_data(self.count)
+        modal = SkipToPage.from_total(self.count)
         await interaction.response.send_modal(modal)
         await modal.wait()
 
@@ -155,11 +158,11 @@ class BasePaginator(ui.View, Generic[T]):
         )
 
     @ui.button(label=">")
-    async def next(self, interaction: discord.Interaction, _: ui.Button[Self]):
+    async def _next(self, interaction: discord.Interaction, _: ui.Button[Self]):
         await self._go_to_item(interaction, self.page + 1)
 
     @ui.button(label=">>")
-    async def last(self, interaction: discord.Interaction, _: ui.Button[Self]):
+    async def _last(self, interaction: discord.Interaction, _: ui.Button[Self]):
         await self._go_to_item(interaction, self.count)
 
 
@@ -167,6 +170,7 @@ class ChunkedPaginator(BasePaginator[T]):
     def __init__(
         self,
         count: int,
+        *,
         page: int = 1,
         chunk: int = 0,
         per_chunk: int = 15,
@@ -184,34 +188,25 @@ class ChunkedPaginator(BasePaginator[T]):
 
     async def send(
         self,
-        ctx: commands.Context["Bot"],
+        dest: discord.abc.Messageable,
         *args: Any,
         **kwargs: Any,
     ):
         self.data = await self.fetch_chunk(0)
 
-        response = await self.format_page(self.data[(self.page - 1) % self.per_chunk])
-        response.setdefault("view", self)
+        response = await self.format_page(
+            self.data[(self.page - 1) % self.per_chunk],
+        )
 
-        await ctx.send(
+        await dest.send(
             *args,
+            view=self,
             **response,
             **kwargs,
         )
 
     async def fetch_chunk(self, chunk: int) -> list[T]:
         raise NotImplementedError
-
-    async def format_page(self, page: T) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def respond_or_edit(
-        self, interaction: discord.Interaction, *args: Any, **kwargs: Any
-    ):
-        if interaction.response.is_done():
-            await interaction.edit_original_response(*args, **kwargs)
-        else:
-            await interaction.response.edit_message(*args, **kwargs)
 
     async def _go_to_item(self, interaction: discord.Interaction, page: int):
         if self.count < page < 0:
@@ -233,6 +228,4 @@ class ChunkedPaginator(BasePaginator[T]):
         response = await self.format_page(
             self.data[(self.page - 1) % self.per_chunk],
         )
-        response.setdefault("view", self)
-
-        await self.respond_or_edit(interaction, **response)
+        await self.respond_or_edit(interaction, view=self, **response)

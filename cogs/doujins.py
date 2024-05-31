@@ -29,10 +29,11 @@ class DoujinPaginator(BasePaginator[str]):
     ):
         super().__init__(data=gallery.pages, *args, **kwargs)
         self.gallery = gallery
+
         self.BASE_EMBED = (
             discord.Embed(
                 title=self.gallery.title["pretty"],
-                url=gallery.url,
+                url=self.gallery.url,
                 timestamp=self.gallery.uploaded_at,
             )
             .set_thumbnail(url=self.gallery.thumbnail)
