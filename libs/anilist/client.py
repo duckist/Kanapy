@@ -91,14 +91,13 @@ def format_query(query: str) -> tuple[str, Optional[str]]:
 
 
 BASE_URL = "https://graphql.anilist.co/"
+SEARCH_TYPE = {
+    "anime": SearchType.ANIME,
+    "manga": SearchType.MANGA,
+}
 
 
 class AniList:
-    SEARCH_TYPE = {
-        "anime": SearchType.ANIME,
-        "manga": SearchType.MANGA,
-    }
-
     def __init__(self, session: ClientSession):
         self.session = session
 
@@ -107,17 +106,17 @@ class AniList:
         session: ClientSession,
         query: str,
         *,
-        variables: dict[str, Any],
-        search_type: SearchType = SearchType.ANIME,
+        variables: dict[str, Any] = {},
+        search_type: Optional[SearchType] = None,
     ):
+        if search_type:
+            variables["type"] = search_type.name
+
         async with session.post(
             BASE_URL,
             json={
-                "query": "query",
-                "variables": {
-                    **variables,
-                    "type": search_type.name,
-                },
+                "query": query,
+                "variables": variables,
             },
         ) as req:
             if req.status != 200:
@@ -163,7 +162,7 @@ class AniList:
             variables={
                 "search": current or None,
             },
-            search_type=cls.SEARCH_TYPE[interaction.command.parent.name],
+            search_type=SEARCH_TYPE[interaction.command.parent.name],
         )
 
         _id = " (ID: {series_id})"
