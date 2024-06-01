@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import discord
 from discord import ui
+from discord.ext import commands
 
 import re
 from urllib.parse import quote
@@ -20,10 +21,11 @@ class View(ui.View):
     @classmethod
     async def from_media(
         cls,
-        interaction: discord.Interaction[Bot],
         media: Media,
-    ) -> Optional[Self]:
-        view = None
+        bot: Bot,
+        user_id: Optional[int] = None,
+    ) -> Self | discord.utils.MISSING:
+        view = discord.utils.MISSING
         if media.relations:
             view = view or cls(timeout=None)
             view.add_item(RelationSelect(media.relations))
@@ -38,13 +40,13 @@ class View(ui.View):
                 )
             )
 
-        if media.next_airing_episode:
+        if media.next_airing_episode and user_id:
             view = view or cls(timeout=None)
             view.add_item(
                 await ReminderButton.for_user(
-                    interaction.client,
+                    bot,
                     media.id,
-                    interaction.user.id,
+                    user_id,
                 )
             )
 
@@ -117,7 +119,11 @@ class RelationSelect(
         if not media:
             return await interaction.edit_original_response(view=self.view)
 
-        view = await View.from_media(interaction, media)
+        view = await View.from_media(
+            media,
+            interaction.client,
+            interaction.user.id,
+        )
 
         await interaction.followup.send(
             embed=AnimangaEmbed.from_media(media),
@@ -272,17 +278,17 @@ class AnimangaEmbed(discord.Embed):
 
 
 def is_nsfw(
-    interaction: discord.Interaction,
+    ctx: commands.Context[Bot],
     media: Media,
 ) -> bool:
-    assert interaction.channel
+    # assert interaction.channel
 
     if media.is_adult and not (
         isinstance(
-            interaction.channel,
+            ctx.channel,
             discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,
         )
-        or interaction.channel.is_nsfw()
+        or ctx.channel.is_nsfw()
     ):
         return True
 

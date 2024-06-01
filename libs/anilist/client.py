@@ -131,7 +131,7 @@ class AniList:
                     f"Search yielded errors:\n{query=}\n{variables=}\n{await req.text()}"
                 )
 
-            return data
+            return data["data"]
 
     @classmethod
     async def search_auto_complete(

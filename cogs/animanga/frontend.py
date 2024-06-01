@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-import discord
 from discord import app_commands
+from discord.ext import commands
 
 from .. import BaseCog
-from .utils import View, AnimangaEmbed, ReminderButton, RelationSelect, is_nsfw
+from .utils import (
+    View,
+    AnimangaEmbed,
+    ReminderButton,
+    RelationSelect,
+    is_nsfw,
+)
 
 from utils.constants import NSFW_ERROR_MSG
 
@@ -25,40 +31,57 @@ class AnimangaFrontend(BaseCog):
 
     async def _search(
         self,
-        interaction: discord.Interaction[Bot],
+        ctx: commands.Context[Bot],
         query: str,
         *,
         search_type: SearchType,
     ):
-        await interaction.response.defer()
-
         media = await self.anilist.fetch(query, search_type=search_type)
         if not media:
-            return await interaction.edit_original_response(
-                content=f"No {search_type.name.lower()} found."
-            )
+            return await ctx.send(content=f"No {search_type.name.lower()} found.")
 
-        if is_nsfw(interaction, media):
-            return await interaction.edit_original_response(
-                content=NSFW_ERROR_MSG % search_type.name.lower()
-            )
+        if is_nsfw(ctx, media):
+            return await ctx.send(content=NSFW_ERROR_MSG % search_type.name.lower())
 
         embed = AnimangaEmbed.from_media(media)
-        view = await View.from_media(interaction, media)
+        view = await View.from_media(
+            media,
+            ctx.bot,
+            ctx.author.id,
+        )
 
-        await interaction.edit_original_response(
+        await ctx.send(
             embed=embed,
             view=view,
         )
 
-    anime = app_commands.Group(
-        name="anime",
-        description="...",
-    )
+    @commands.hybrid_group()
+    async def anime(
+        self,
+        ctx: commands.Context[Bot],
+        *,
+        query: str,
+    ):
+        """
+        Base command for Anime related things. On its own it will search for animes,
+        but you can do other stuff from its sub-commands.
 
-    @anime.command(name="search")
+        Parameters
+        -----------
+        query: str
+            The Anime to search for.
+        """
+
+        await ctx.invoke(self.anime_search, query=query)
+
+    @anime.command(name="search", invoke_without_command=True)
     @app_commands.autocomplete(query=AniList.search_auto_complete)
-    async def anime_search(self, interaction: discord.Interaction[Bot], query: str):
+    async def anime_search(
+        self,
+        ctx: commands.Context[Bot],
+        *,
+        query: str,
+    ):
         """
         Search for an Anime.
 
@@ -68,20 +91,34 @@ class AnimangaFrontend(BaseCog):
             The Anime to search for.
         """
 
-        return self._search(
-            interaction,
+        return await self._search(
+            ctx,
             query,
             search_type=SearchType.ANIME,
         )
 
-    manga = app_commands.Group(
-        name="manga",
-        description="...",
-    )
+    @commands.hybrid_group()
+    async def manga(
+        self,
+        ctx: commands.Context[Bot],
+        *,
+        query: str,
+    ):
+        """
+        Base command for Manga related things. On its own it will search for mangas,
+        but you can do other stuff from its sub-commands.
+
+        Parameters
+        -----------
+        query: str
+            The Manga to search for.
+        """
+
+        await ctx.invoke(self.manga_search, query=query)
 
     @manga.command(name="search")
     @app_commands.autocomplete(query=AniList.search_auto_complete)
-    async def manga_search(self, interaction: discord.Interaction[Bot], query: str):
+    async def manga_search(self, ctx: commands.Context[Bot], query: str):
         """
         Search for a Manga.
 
@@ -92,7 +129,7 @@ class AnimangaFrontend(BaseCog):
         """
 
         return self._search(
-            interaction,
+            ctx,
             query,
             search_type=SearchType.ANIME,
         )
