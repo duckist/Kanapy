@@ -31,11 +31,13 @@ def cutoff(
     text: str,
     limit: int = 2000,
     *,
-    ending: str = "...",
+    ending: str = "",
+    delimiter: str = "...",
 ) -> str:
-    return (
-        text if len(text) <= limit else (text[: limit - len(ending)]).strip() + ending
-    )
+    if len(text + ending) > limit:
+        return text[: limit - len(delimiter + ending)] + delimiter + ending
+
+    return text + ending
 
 
 def as_chunks(

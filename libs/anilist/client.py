@@ -156,7 +156,7 @@ class AniList:
             and interaction.command.parent
         )
 
-        results = await cls.query(
+        req = await cls.query(
             interaction.client.session,
             SEARCH_QUERY,
             variables={
@@ -165,15 +165,20 @@ class AniList:
             search_type=SEARCH_TYPE[interaction.command.parent.name],
         )
 
-        _id = " (ID: {series_id})"
+        data = req.get("Page", {}).get("media")
+        if not data:
+            return []
 
         return [
             app_commands.Choice(
-                name=cutoff(name, 100),
-                value=cutoff(name, 100 - len(_id.format(series_id=series_id)))
-                + _id.format(series_id=series_id),
+                name=cutoff(media["title"]["romaji"], 100),
+                value=cutoff(
+                    media["title"]["romaji"],
+                    100,
+                    ending=f" (ID: {media['id']})",
+                ),
             )
-            for series_id, name in results
+            for media in data
         ]
 
     async def fetch(
