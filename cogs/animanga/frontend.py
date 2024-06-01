@@ -55,7 +55,7 @@ class AnimangaFrontend(BaseCog):
             view=view,
         )
 
-    @commands.hybrid_group()
+    @commands.hybrid_group(description="...")
     async def anime(
         self,
         ctx: commands.Context[Bot],
@@ -97,7 +97,7 @@ class AnimangaFrontend(BaseCog):
             search_type=SearchType.ANIME,
         )
 
-    @commands.hybrid_group()
+    @commands.hybrid_group(description="...")
     async def manga(
         self,
         ctx: commands.Context[Bot],
