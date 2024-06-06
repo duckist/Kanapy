@@ -27,7 +27,14 @@ CREATE TABLE IF NOT EXISTS avatar_history (
 CREATE TABLE IF NOT EXISTS anime_reminders (
     user_id BIGINT NOT NULL,
     anilist_id INT NOT NULL,
+    
     PRIMARY KEY (user_id, anilist_id)
+);
+
+CREATE TABLE IF NOT EXISTS anilist_tokens (
+    user_id BIGINT PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    expires_in TIMESTAMP NOT NULL
 );
 
 CREATE OR REPLACE FUNCTION toggle_reminder(

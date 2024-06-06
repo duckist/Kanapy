@@ -6,11 +6,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from utils import cutoff
 
 from .utils import QUERY_PATTERN
-from .types import (
-    SearchType,
-    Media,
-    MediaResponse,
-)
+from .types import SearchType, Media, MediaResponse, AccessToken
 
 if TYPE_CHECKING:
     from utils.subclasses import Bot
@@ -98,40 +94,41 @@ SEARCH_TYPE = {
 
 
 class AniList:
-    def __init__(self, session: ClientSession):
+    def __init__(
+        self,
+        session: ClientSession,
+        *,
+        anilist_id: str,
+        anilist_secret: str,
+    ):
         self.session = session
+        self.ANILIST_ID = anilist_id
+        self.ANILIST_SECRET = anilist_secret
 
     @staticmethod
     async def query(
         session: ClientSession,
-        query: str,
         *,
-        variables: dict[str, Any] = {},
-        search_type: Optional[SearchType] = None,
+        URL: str = BASE_URL,
+        **kwargs: Any,
     ):
-        if search_type:
-            variables["type"] = search_type.name
-
         async with session.post(
-            BASE_URL,
-            json={
-                "query": query,
-                "variables": variables,
-            },
+            URL,
+            **kwargs,
         ) as req:
             if req.status != 200:
                 raise Exception(
-                    f"Recieved a non 200 response: {req.status=} \n{await req.text()}"
+                    f"Recieved a non 200 response: {req.status=}\n{await req.text()}"
                 )
 
             data = await req.json()
 
             if data.get("errors"):
                 raise Exception(
-                    f"Search yielded errors:\n{query=}\n{variables=}\n{await req.text()}"
+                    f"Search yielded errors:\n{kwargs=}\n{await req.text()}"
                 )
 
-            return data["data"]
+            return data.get("data") or data
 
     @classmethod
     async def search_auto_complete(
@@ -158,11 +155,14 @@ class AniList:
 
         req = await cls.query(
             interaction.client.session,
-            SEARCH_QUERY,
-            variables={
-                "search": current or None,
+            json={
+                "query": SEARCH_QUERY,
+                "variables": {
+                    "search": current or None,
+                    "type": SEARCH_TYPE[interaction.command.parent.name],
+                },
+                "search_type": SEARCH_TYPE[interaction.command.parent.name].value,
             },
-            search_type=SEARCH_TYPE[interaction.command.parent.name],
         )
 
         data = req.get("Page", {}).get("media")
@@ -203,11 +203,14 @@ class AniList:
 
         req = await self.query(
             self.session,
-            query,
-            variables={
-                "search": animanga_id or search,
+            json={
+                "query": query,
+                "variables": {
+                    "search": animanga_id or search,
+                    "type": search_type.value,
+                },
+                "search_type": search_type.value,
             },
-            search_type=search_type,
         )
 
         data: Optional[MediaResponse] = req.get("Media")
@@ -218,3 +221,97 @@ class AniList:
             data,
             search_type=search_type,
         )
+
+    async def get_access_token(self, token: str) -> AccessToken:
+        """
+        Fetches an access token from an authorization code.
+
+        Parameteres
+        ------------
+        token: str
+            The authorization code.
+        """
+
+        req = await self.query(
+            self.session,
+            URL="https://anilist.co/api/v2/oauth/token",
+            json={
+                "code": token,
+                "client_id": self.ANILIST_ID,
+                "client_secret": self.ANILIST_SECRET,
+                "grant_type": "authorization_code",
+                "redirect_uri": "https://anilist.co/api/v2/oauth/pin",
+            },
+        )
+
+        return AccessToken.from_json(req)
+
+    async def fetch_user_id(self, token: str) -> int:
+        """
+        Fetches the ID of the currently logged in user.
+
+        Parameteres
+        ------------
+        token: str
+            The access token.
+        """
+
+        query = """
+            query {
+                Viewer {
+                    id
+                }
+            }
+        """
+
+        req = await self.query(
+            self.session,
+            json={
+                "query": query,
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+        )
+
+        return req.get("Viewer", {}).get("id")
+
+    async def get_user_id(self, user: str | int) -> Optional[int]:
+        """
+        Fetches the ID of a user from their username or ID.
+
+        Parameteres
+        ------------
+        user: str | int
+            The username or ID of the user.
+        """
+
+        query = """
+            query ($id: Int, $name: String) {
+                User (id: $id, name: $name) {
+                    id
+                }
+            }
+        """
+
+        try:
+            variables = {
+                k: v
+                for k, v in {
+                    "id": user if isinstance(user, int) else None,
+                    "name": user if isinstance(user, str) else None,
+                }.items()
+                if v is not None
+            }
+
+            req = await self.query(
+                self.session,
+                json={
+                    "query": query,
+                    "variables": variables,
+                },
+            )
+        except Exception:
+            ...
+        else:
+            return req.get("User", {}).get("id")
