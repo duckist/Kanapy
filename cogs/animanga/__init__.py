@@ -148,6 +148,7 @@ class Animanga(Reminders, BaseCog):
         """
         Shows the current logged in profile for your linked AniList account.
         """
+
         await ctx.invoke(self._anilist_user, args)
 
     @_anilist.command(name="login")
@@ -156,8 +157,24 @@ class Animanga(Reminders, BaseCog):
         Login to your AniList account.
         """
 
-        embed = discord.Embed(description="Head over to the link below to login.")
+        embed = discord.Embed(
+            title="AniList Login",
+            description="Head over to the link below to login.",
+        )
         await ctx.send(embed=embed, view=LoginView(ctx.bot))
+
+    @_anilist.command(name="logout")
+    async def _anilist_logout(self, ctx: commands.Context[Bot]):
+        """
+        Logs out of your AniList account.
+        """
+
+        await ctx.bot.pool.execute(
+            "DELETE FROM anilist_tokens WHERE user_id = $1",
+            ctx.author.id,
+        )
+
+        await ctx.send("Logged out.")
 
     @_anilist.command(name="user")
     async def _anilist_user(
@@ -169,6 +186,13 @@ class Animanga(Reminders, BaseCog):
             user = await AniListUserConverter().convert(ctx, str(ctx.author.id))
 
         await ctx.send(f"{user}")
+
+    @_anilist.command(name="list")
+    async def _anilist_list(
+        self,
+        ctx: commands.Context[Bot],
+        user: Annotated[Optional[int], AniListUserConverter] = None,
+    ): ...
 
 
 async def setup(bot: "Bot"):

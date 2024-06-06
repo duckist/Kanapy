@@ -25,8 +25,8 @@ query ($search: String, $type: MediaType) {
 """
 
 FETCH_QUERY = """
-query ($search: %s, $type: MediaType) {
-  Media(%s: $search, type: $type, sort: POPULARITY_DESC) {
+query ($id: Int, $search: String, $type: MediaType) {
+  Media(id: $id, search: $search, type: $type, sort: POPULARITY_DESC) {
     title {
       romaji
     }
@@ -78,14 +78,6 @@ query ($search: %s, $type: MediaType) {
 """
 
 
-def format_query(query: str) -> tuple[str, Optional[str]]:
-    match = QUERY_PATTERN.fullmatch(query)
-    if match:
-        return (FETCH_QUERY % ("Int", "id"), match.groups()[0])
-
-    return (FETCH_QUERY % ("String", "search"), None)
-
-
 BASE_URL = "https://graphql.anilist.co/"
 SEARCH_TYPE = {
     "anime": SearchType.ANIME,
@@ -112,10 +104,7 @@ class AniList:
         URL: str = BASE_URL,
         **kwargs: Any,
     ):
-        async with session.post(
-            URL,
-            **kwargs,
-        ) as req:
+        async with session.post(URL, **kwargs) as req:
             if req.status != 200:
                 raise Exception(
                     f"Recieved a non 200 response: {req.status=}\n{await req.text()}"
@@ -199,17 +188,20 @@ class AniList:
             An Enum of either ANIME or MANGA.
         """
 
-        query, animanga_id = format_query(search)
+        variables = {
+            "type": search_type.name,
+        }
+
+        if match := QUERY_PATTERN.fullmatch(search):
+            variables["id"] = int(match.group(1))  # pyright: ignore[reportArgumentType]
+        else:
+            variables["search"] = search
 
         req = await self.query(
             self.session,
             json={
-                "query": query,
-                "variables": {
-                    "search": animanga_id or search,
-                    "type": search_type.value,
-                },
-                "search_type": search_type.value,
+                "query": FETCH_QUERY,
+                "variables": variables,
             },
         )
 
@@ -294,16 +286,13 @@ class AniList:
             }
         """
 
-        try:
-            variables = {
-                k: v
-                for k, v in {
-                    "id": user if isinstance(user, int) else None,
-                    "name": user if isinstance(user, str) else None,
-                }.items()
-                if v is not None
-            }
+        variables = {}
+        if isinstance(user, int):
+            variables["id"] = user
+        else:
+            variables["name"] = user
 
+        try:
             req = await self.query(
                 self.session,
                 json={

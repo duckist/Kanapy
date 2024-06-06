@@ -298,7 +298,6 @@ class AniListUserConverter(commands.Converter["Bot"]):
     async def convert(self, ctx: commands.Context[Bot], arg: str):  # pyright: ignore[reportIncompatibleMethodOverride]
         try:
             member = await commands.UserConverter().convert(ctx, arg)
-
             access_token = await ctx.bot.pool.fetchval(
                 "SELECT access_token FROM anilist_tokens WHERE user_id = $1",
                 member.id,
@@ -306,11 +305,20 @@ class AniListUserConverter(commands.Converter["Bot"]):
 
             if not access_token:
                 raise commands.BadArgument(
-                    f"User `{member.display_name}` does not have an AniList account linked."
+                    f"**{member.display_name}** does not have an AniList account linked."
                 )
 
-            return await ctx.bot.anilist.fetch_user_id(access_token)
-        except Exception:
+            user_id = await ctx.bot.anilist.fetch_user_id(access_token)
+            if not user_id:
+                raise commands.BadArgument(
+                    f"**{member.display_name}**'s AniList account token has expired."
+                )
+
+            return user_id
+        except Exception as e:
+            if isinstance(e, commands.BadArgument):
+                raise e
+
             user = await ctx.bot.anilist.get_user_id(
                 int(arg) if arg.isdigit() else arg,
             )
