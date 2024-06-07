@@ -6,7 +6,7 @@ from discord import ui
 from typing import TYPE_CHECKING, TypeVar, Generic
 
 if TYPE_CHECKING:
-    from typing import Any, Self
+    from typing import Any, Self, Optional
 
 
 T = TypeVar("T")
@@ -56,7 +56,7 @@ class BasePaginator(ui.View, Generic[T]):
         *,
         count: int = 0,
         page: int = 1,
-        limit_to_author: bool = True,
+        limit_to_author: Optional[discord.Object] = None,
         **kwargs: Any,
     ):
         self.data = data
@@ -89,9 +89,13 @@ class BasePaginator(ui.View, Generic[T]):
         raise NotImplementedError
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if self.limit_to_author:
-            if self.msg and interaction.user.id != self.msg.author.id:
-                return False
+        if self.limit_to_author and interaction.user.id != self.limit_to_author.id:
+            await interaction.response.send_message(
+                "You can't use this paginator, try invoking the command yourself.",
+                ephemeral=True,
+            )
+
+            return False
 
         return True
 

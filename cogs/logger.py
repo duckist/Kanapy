@@ -73,19 +73,10 @@ class AvatarPaginator(ChunkedPaginator[tuple[str, datetime]]):
             user,
             message,
             *args,
+            limit_to_author=message.author,
             count=count,
             **kwargs,
         )
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user == self.message.author:
-            return True
-
-        await interaction.response.send_message(
-            "Please invoke the command yourself.", ephemeral=True
-        )
-
-        return False  # love u to death type-checker
 
     async def fetch_chunk(self, chunk: int) -> list[tuple[str, datetime]]:
         records = await self.bot.pool.fetch(
@@ -127,10 +118,7 @@ class AvatarPaginator(ChunkedPaginator[tuple[str, datetime]]):
             )
         )
 
-        return {
-            "embed": embed,
-            "view": self,
-        }
+        return {"embed": embed}
 
 
 class RotatingWebhook:

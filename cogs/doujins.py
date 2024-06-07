@@ -109,7 +109,7 @@ class Doujins(BaseCog):
             if not q:
                 return await ctx.send("Could not find a doujin with that id.")
 
-            await DoujinPaginator(q).send(ctx)
+            await DoujinPaginator(q, limit_to_author=ctx.author).send(ctx)
 
 
 async def setup(bot: "Bot"):
