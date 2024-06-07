@@ -56,12 +56,14 @@ class BasePaginator(ui.View, Generic[T]):
         *,
         count: int = 0,
         page: int = 1,
+        limit_to_author: bool = True,
         **kwargs: Any,
     ):
         self.data = data
         self.count = count or len(data)
         self.page = page
         self.msg = None
+        self.limit_to_author = limit_to_author
         super().__init__(**kwargs)
 
         self.update_buttons()
@@ -85,6 +87,13 @@ class BasePaginator(ui.View, Generic[T]):
 
     async def format_page(self, page: T) -> dict[str, Any]:
         raise NotImplementedError
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.limit_to_author:
+            if self.msg and interaction.user.id != self.msg.author.id:
+                return False
+
+        return True
 
     async def respond_or_edit(
         self,
