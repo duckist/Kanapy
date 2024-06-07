@@ -60,3 +60,9 @@
         # path to download the videos and temporarily save the file.
         # (NOTE: it should end with `/` or else it'll get confused.)
         PATH_TO_DOWNLOAD = "temp/"
+
+    [Cogs.Doujins]
+        # An instance of https://github.com/FlareSolverr/FlareSolverr to bypass the cloudflare
+        # strict on the doujin source.
+        FLARESOLVER_URL = "http://localhost:8191"
+

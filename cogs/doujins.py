@@ -84,7 +84,14 @@ class DoujinPaginator(BasePaginator[str]):
 class Doujins(BaseCog):
     def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
-        self.client = DoujinClient()
+
+    async def cog_load(self):
+        await super().cog_load()
+        self.client = await DoujinClient.new(self.CONFIG["FLARESOLVER_URL"])
+
+    async def cog_unload(self):
+        await super().cog_unload()
+        await self.client.session.close()
 
     @commands.command()
     @commands.is_nsfw()
@@ -97,11 +104,12 @@ class Doujins(BaseCog):
         Read a doujin from its ID.
         """
 
-        q = await self.client.fetch_doujin(doujin)
-        if not q:
-            return await ctx.send("Could not find a doujin with that id.")
+        async with ctx.typing():
+            q = await self.client.fetch_doujin(doujin)
+            if not q:
+                return await ctx.send("Could not find a doujin with that id.")
 
-        await DoujinPaginator(q).send(ctx)
+            await DoujinPaginator(q).send(ctx)
 
 
 async def setup(bot: "Bot"):
