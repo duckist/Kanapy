@@ -6,7 +6,13 @@ from typing import Any, Optional, TYPE_CHECKING
 from utils import cutoff
 
 from .utils import QUERY_PATTERN
-from .types import SearchType, Media, MediaResponse, AccessToken
+from .types import (
+    SearchType,
+    Media,
+    MediaResponse,
+    AccessToken,
+    PartialUser,
+)
 
 if TYPE_CHECKING:
     from utils.subclasses import Bot
@@ -252,7 +258,7 @@ class AniList:
 
         return AccessToken.from_json(req)
 
-    async def fetch_user_id(self, token: str) -> int:
+    async def fetch_partial_user(self, token: str) -> Optional[PartialUser]:
         """
         Fetches the ID of the currently logged in user.
 
@@ -266,6 +272,7 @@ class AniList:
             query {
                 Viewer {
                     id
+                    name
                 }
             }
         """
@@ -280,9 +287,16 @@ class AniList:
             },
         )
 
-        return req.get("Viewer", {}).get("id")
+        data = req.get("Viewer", {})
+        if not data:
+            return None
 
-    async def get_user_id(self, user: str | int) -> Optional[int]:
+        return PartialUser(
+            name=data["name"],
+            id=data["id"],
+        )
+
+    async def get_partial_user(self, user: str | int) -> Optional[PartialUser]:
         """
         Fetches the ID of a user from their username or ID.
 
@@ -296,6 +310,7 @@ class AniList:
             query ($id: Int, $name: String) {
                 User (id: $id, name: $name) {
                     id
+                    name
                 }
             }
         """
@@ -314,4 +329,18 @@ class AniList:
             },
         )
 
-        return req.get("User", {}).get("id")
+        data = req.get("User", {})
+        if not data:
+            return None
+
+        return PartialUser(
+            name=data["name"],
+            id=data["id"],
+        )
+
+    async def fetch_user_list(
+        self,
+        user: PartialUser,
+        *,
+        search_type: SearchType,
+    ): ...

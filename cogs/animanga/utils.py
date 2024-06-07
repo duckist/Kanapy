@@ -312,7 +312,7 @@ class AniListUserConverter(commands.Converter["Bot"]):
                 )
 
             try:
-                user_id = await ctx.bot.anilist.fetch_user_id(access_token)
+                user = await ctx.bot.anilist.fetch_partial_user(access_token)
             except Exception:
                 await ctx.bot.pool.execute(
                     "DELETE FROM anilist_tokens WHERE user_id = $1",
@@ -325,13 +325,13 @@ class AniListUserConverter(commands.Converter["Bot"]):
                     else f"**{member.display_name}**'s AniList account token has expired."
                 )
 
-            return user_id
+            return user
         except Exception as e:
             if isinstance(e, commands.BadArgument):
                 raise e
 
             try:
-                user = await ctx.bot.anilist.get_user_id(
+                user = await ctx.bot.anilist.get_partial_user(
                     int(arg) if arg.isdigit() else arg,
                 )
             except Exception:

@@ -18,7 +18,7 @@ from .utils import (
 from utils.constants import NSFW_ERROR_MSG
 
 from libs.anilist import AniList
-from libs.anilist.types import SearchType
+from libs.anilist.types import SearchType, PartialUser
 
 from .reminders import Reminders
 
@@ -143,7 +143,7 @@ class Animanga(Reminders, BaseCog):
     async def _anilist(
         self,
         ctx: commands.Context[Bot],
-        args: Annotated[Optional[int], AniListUserConverter] = None,
+        args: Annotated[Optional[PartialUser], AniListUserConverter] = None,
     ):
         """
         Shows the current logged in profile for your linked AniList account.
@@ -184,7 +184,7 @@ class Animanga(Reminders, BaseCog):
     async def _anilist_user(
         self,
         ctx: commands.Context[Bot],
-        user: Annotated[Optional[int], AniListUserConverter] = None,
+        user: Annotated[Optional[PartialUser], AniListUserConverter] = None,
     ):
         if user is None:
             user = await AniListUserConverter().convert(ctx, str(ctx.author.id))
@@ -195,7 +195,7 @@ class Animanga(Reminders, BaseCog):
     async def _anilist_list(
         self,
         ctx: commands.Context[Bot],
-        user: Annotated[Optional[int], AniListUserConverter] = None,
+        user: Annotated[Optional[PartialUser], AniListUserConverter] = None,
     ): ...
 
 

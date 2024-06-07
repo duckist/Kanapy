@@ -194,3 +194,8 @@ class AccessToken(NamedTuple):
             access_token=data["access_token"],
             expiry=datetime.now() + timedelta(seconds=data["expires_in"]),
         )
+
+
+class PartialUser(NamedTuple):
+    name: str
+    id: str
