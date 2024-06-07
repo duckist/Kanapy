@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import TypedDict, Literal, NamedTuple, Self
+from typing import TypedDict, Literal, NamedTuple, Self, Annotated, Any
 
 from .constants import BASE_URL, CDN_URL
 
@@ -103,7 +103,10 @@ class Gallery(NamedTuple):
         return output
 
     @classmethod
-    def from_data(cls, data: GalleryResponse) -> Self:
+    def from_data(
+        cls,
+        data: Annotated[dict[str, Any], GalleryResponse],
+    ) -> Self:
         return cls(
             media_id=data["media_id"],
             title=data["title"],

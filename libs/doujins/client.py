@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import cloudscraper  # pyright: ignore[reportMissingTypeStubs]
-
-from utils.functions import run_in_executor
+import aiohttp  # pyright: ignore[reportMissingTypeStubs]
 
 from .types import Gallery
 from .constants import BASE_URL
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import Any, Optional
-
-T = TypeVar("T")
 
 
 class Route:
@@ -40,22 +36,77 @@ class Route:
 
 
 class DoujinClient:
-    def __init__(self) -> None:
-        self.scraper = cloudscraper.create_scraper()  # pyright: ignore[reportUnknownMemberType]
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        flare_solver: str,
+    ) -> None:
+        self.FLARE_SOLVER = flare_solver
+        self.session = session
+        self.query_metadata: Any = {}
 
-    @run_in_executor
-    def query(self, route: Route):
-        with self.scraper.get(route.url) as req:
-            if req.status_code == 403:
-                raise Exception("Cloudflare Blocked")
-            elif req.status_code == 404:
-                return None
-            elif req.status_code != 200:
+    @classmethod
+    async def new(cls, flare_solver: str) -> DoujinClient:
+        session = aiohttp.ClientSession()
+
+        return cls(
+            session=session,
+            flare_solver=flare_solver,
+        )
+
+    async def _renew_cloudflare_token(
+        self,
+        *,
+        retries: int = 0,
+        timeout: int = 60,
+    ) -> None:
+        async with self.session.post(
+            f"{self.FLARE_SOLVER}/v1",
+            json={
+                "cmd": "request.get",
+                "url": f"{BASE_URL}/404",
+                "maxTimeout": timeout * 1000,
+            },
+        ) as req:
+            data = await req.json()
+            if req.status != 200:
+                if retries <= 3:
+                    return await self._renew_cloudflare_token(
+                        retries=retries + 1,
+                        timeout=timeout,
+                    )
+
                 raise Exception(
-                    f"Recieved an {req.status_code} while trying to query {route.path!r}"
+                    f"Failed to renew cloudflare token, recieved a {req.status} Status Code."
                 )
 
-            return req.json()
+            self.query_metadata = {
+                "headers": {
+                    "User-Agent": data["solution"]["userAgent"],
+                    **data["solution"]["headers"],
+                },
+                "cookies": {
+                    cookie["name"]: cookie["value"]
+                    for cookie in data["solution"]["cookies"]
+                },
+            }
+
+    async def query(self, route: Route) -> Optional[dict[str, Any]]:
+        async with self.session.get(
+            route.url,
+            **self.query_metadata,
+        ) as req:
+            if req.status == 403:
+                await self._renew_cloudflare_token()
+                return await self.query(route)
+            elif req.status == 404:
+                return None
+            elif req.status != 200:
+                raise Exception(
+                    f"Recieved an {req.status} while trying to query {route.path!r}"
+                )
+
+            return await req.json()
 
     async def fetch_doujin(
         self,
