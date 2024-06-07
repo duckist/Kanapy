@@ -298,6 +298,7 @@ class AniListUserConverter(commands.Converter["Bot"]):
     async def convert(self, ctx: commands.Context[Bot], arg: str):  # pyright: ignore[reportIncompatibleMethodOverride]
         try:
             member = await commands.UserConverter().convert(ctx, arg)
+
             access_token = await ctx.bot.pool.fetchval(
                 "SELECT access_token FROM anilist_tokens WHERE user_id = $1",
                 member.id,
@@ -305,13 +306,23 @@ class AniListUserConverter(commands.Converter["Bot"]):
 
             if not access_token:
                 raise commands.BadArgument(
-                    f"**{member.display_name}** does not have an AniList account linked."
+                    f"You don't have an AniList account linked. You can link your AniList account with `{ctx.clean_prefix} anilist login`."
+                    if ctx.author.id == member.id
+                    else f"**{member.display_name}** does not have an AniList account linked."
                 )
 
-            user_id = await ctx.bot.anilist.fetch_user_id(access_token)
-            if not user_id:
+            try:
+                user_id = await ctx.bot.anilist.fetch_user_id(access_token)
+            except Exception:
+                await ctx.bot.pool.execute(
+                    "DELETE FROM anilist_tokens WHERE user_id = $1",
+                    member.id,
+                )
+
                 raise commands.BadArgument(
-                    f"**{member.display_name}**'s AniList account token has expired."
+                    f"Your AniList account token has expired, please login again with `{ctx.clean_prefix} anilist login`."
+                    if ctx.author.id == member.id
+                    else f"**{member.display_name}**'s AniList account token has expired."
                 )
 
             return user_id
@@ -319,11 +330,11 @@ class AniListUserConverter(commands.Converter["Bot"]):
             if isinstance(e, commands.BadArgument):
                 raise e
 
-            user = await ctx.bot.anilist.get_user_id(
-                int(arg) if arg.isdigit() else arg,
-            )
-
-            if not user:
+            try:
+                user = await ctx.bot.anilist.get_user_id(
+                    int(arg) if arg.isdigit() else arg,
+                )
+            except Exception:
                 raise commands.BadArgument(f"User `{arg}` not found on AniList.")
 
             return user

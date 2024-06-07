@@ -97,6 +97,20 @@ class AniList:
         self.ANILIST_ID = anilist_id
         self.ANILIST_SECRET = anilist_secret
 
+    @classmethod
+    async def new(
+        cls,
+        *,
+        anilist_id: str,
+        anilist_secret: str,
+    ):
+        session = ClientSession()
+        return cls(
+            session,
+            anilist_id=anilist_id,
+            anilist_secret=anilist_secret,
+        )
+
     @staticmethod
     async def query(
         session: ClientSession,
@@ -292,15 +306,12 @@ class AniList:
         else:
             variables["name"] = user
 
-        try:
-            req = await self.query(
-                self.session,
-                json={
-                    "query": query,
-                    "variables": variables,
-                },
-            )
-        except Exception:
-            ...
-        else:
-            return req.get("User", {}).get("id")
+        req = await self.query(
+            self.session,
+            json={
+                "query": query,
+                "variables": variables,
+            },
+        )
+
+        return req.get("User", {}).get("id")

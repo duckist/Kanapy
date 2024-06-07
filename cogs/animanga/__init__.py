@@ -159,8 +159,9 @@ class Animanga(Reminders, BaseCog):
 
         embed = discord.Embed(
             title="AniList Login",
-            description="Head over to the link below to login.",
+            description="Head over to the link below to obtain your AniList access token. Submit the token by pressing the button below.",
         )
+
         await ctx.send(embed=embed, view=LoginView(ctx.bot))
 
     @_anilist.command(name="logout")
@@ -169,10 +170,13 @@ class Animanga(Reminders, BaseCog):
         Logs out of your AniList account.
         """
 
-        await ctx.bot.pool.execute(
+        val = await ctx.bot.pool.execute(
             "DELETE FROM anilist_tokens WHERE user_id = $1",
             ctx.author.id,
         )
+
+        if val.endswith("0"):
+            return await ctx.send("You're not logged in to be logged out.")
 
         await ctx.send("Logged out.")
 
