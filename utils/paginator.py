@@ -56,14 +56,14 @@ class BasePaginator(ui.View, Generic[T]):
         *,
         count: int = 0,
         page: int = 1,
-        limit_to_author: Optional[discord.Object] = None,
+        limit_to_user: Optional[discord.Object] = None,
         **kwargs: Any,
     ):
         self.data = data
         self.count = count or len(data)
         self.page = page
         self.msg = None
-        self.limit_to_author = limit_to_author
+        self.limit_to_user = limit_to_user
         super().__init__(**kwargs)
 
         self.update_buttons()
@@ -89,7 +89,7 @@ class BasePaginator(ui.View, Generic[T]):
         raise NotImplementedError
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if self.limit_to_author and interaction.user.id != self.limit_to_author.id:
+        if self.limit_to_user and interaction.user.id != self.limit_to_user.id:
             await interaction.response.send_message(
                 "You can't use this paginator, try invoking the command yourself.",
                 ephemeral=True,
@@ -111,12 +111,13 @@ class BasePaginator(ui.View, Generic[T]):
             await interaction.response.edit_message(*args, **kwargs)
 
     async def _go_to_item(self, interaction: discord.Interaction, page: int):
-        if len(self.data) < page < 0:
-            return await self.respond_or_edit(
-                interaction,
+        if not (0 < page <= len(self.data)):
+            await interaction.response.send_message(
                 f"Page overflow! you can't move to page `{page}` from page `{self.page}`.",
                 ephemeral=True,
             )
+
+            return
 
         self.page = page
         self.update_buttons()
@@ -125,7 +126,11 @@ class BasePaginator(ui.View, Generic[T]):
             self.data[self.page - 1],
         )
 
-        await self.respond_or_edit(interaction, view=self, **response)
+        await self.respond_or_edit(
+            interaction,
+            view=self,
+            **response,
+        )
 
     def update_buttons(self):
         self._first.disabled = False
@@ -133,11 +138,11 @@ class BasePaginator(ui.View, Generic[T]):
         self._next.disabled = False
         self._last.disabled = False
 
-        if self.page == 1:
+        if self.page <= 1:
             self._first.disabled = True
             self._prev.disabled = True
 
-        if self.page == self.count:
+        if self.page >= self.count:
             self._next.disabled = True
             self._last.disabled = True
 
@@ -222,12 +227,13 @@ class ChunkedPaginator(BasePaginator[T]):
         raise NotImplementedError
 
     async def _go_to_item(self, interaction: discord.Interaction, page: int):
-        if self.count < page < 0:
-            return await self.respond_or_edit(
-                interaction,
+        if not (0 < page <= self.count):
+            await interaction.response.send_message(
                 f"Page overflow! you can't move to page `{page}` from page `{self.page}`.",
                 ephemeral=True,
             )
+
+            return
 
         chunk = (page - 1) // self.per_chunk
         if self.chunk != chunk:

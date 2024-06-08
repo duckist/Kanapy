@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import discord
-from discord.ext import commands
 from discord import ui
+from discord.ext import commands
 
-from utils.subclasses import Bot as Bot
-
-from . import BaseCog
 from utils.paginator import BasePaginator
 
 from libs.doujins import DoujinClient
 from libs.doujins.types import Gallery, Tag
+
+from . import BaseCog
 
 from typing import TYPE_CHECKING
 
@@ -94,6 +93,7 @@ class Doujins(BaseCog):
         await self.client.session.close()
 
     @commands.command()
+    @commands.cooldown(1, 5, commands.BucketType.user)
     @commands.is_nsfw()
     async def doujin(
         self,
@@ -109,7 +109,7 @@ class Doujins(BaseCog):
             if not q:
                 return await ctx.send("Could not find a doujin with that id.")
 
-            await DoujinPaginator(q, limit_to_author=ctx.author).send(ctx)
+            await DoujinPaginator(q, limit_to_user=ctx.author).send(ctx)
 
 
 async def setup(bot: "Bot"):

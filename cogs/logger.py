@@ -73,7 +73,7 @@ class AvatarPaginator(ChunkedPaginator[tuple[str, datetime]]):
             user,
             message,
             *args,
-            limit_to_author=message.author,
+            limit_to_user=message.author,
             count=count,
             **kwargs,
         )
