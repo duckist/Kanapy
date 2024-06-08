@@ -150,7 +150,7 @@ class BasePaginator(ui.View, Generic[T]):
 
     async def on_timeout(self) -> None:
         for child in self.children:
-            if hasattr(child, "disabled"):
+            if hasattr(child, "disabled") and not isinstance(child, ui.DynamicItem):
                 child.disabled = True  # type: ignore
 
         if self.msg:
