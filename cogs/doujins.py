@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import discord
-from discord import ui
 from discord.ext import commands
 
 from utils.paginator import BasePaginator
+from utils.dynamic_delete import DeleteButton
 
 from libs.doujins import DoujinClient
 from libs.doujins.types import Gallery, Tag
@@ -14,7 +14,7 @@ from . import BaseCog
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Self
+    from typing import Any
 
     from . import Bot, Context
 
@@ -29,6 +29,9 @@ class DoujinPaginator(BasePaginator[str]):
         super().__init__(data=gallery.pages, *args, **kwargs)
         self.gallery = gallery
 
+        if self.limit_to_user:
+            self.add_item(DeleteButton(self.limit_to_user.id))
+
         self.BASE_EMBED = (
             discord.Embed(
                 title=self.gallery.title["pretty"],
@@ -42,11 +45,11 @@ class DoujinPaginator(BasePaginator[str]):
         tags = self.gallery.tags.pop("tag")
 
         for k, v in self.gallery.tags.items():
-            self._add_field(k, v)
+            self._add_embed_field(k, v)
 
-        self._add_field("tags", tags, inline=False)
+        self._add_embed_field("tags", tags, inline=False)
 
-    def _add_field(
+    def _add_embed_field(
         self,
         name: str,
         tags: list[Tag],
@@ -71,13 +74,6 @@ class DoujinPaginator(BasePaginator[str]):
         return {
             "embed": self.BASE_EMBED.set_image(url=page),
         }
-
-    @ui.button(emoji="\U0001f5d1", style=discord.ButtonStyle.danger)
-    async def delete(self, interaction: discord.Interaction, _: ui.Button["Self"]):
-        self.stop()
-
-        if interaction.message:
-            await interaction.message.delete()
 
 
 class Doujins(BaseCog):

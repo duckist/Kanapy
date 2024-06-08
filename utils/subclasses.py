@@ -18,6 +18,7 @@ from utils import as_chunks, to_cb
 from libs.anilist import AniList
 
 from .constants import STARTUP_QUERY
+from .dynamic_delete import DeleteButton
 
 queue: Queue[logging.LogRecord] = Queue()
 log_handler = QueueHandler(queue)  # type: ignore
@@ -153,6 +154,8 @@ class Bot(commands.Bot):
         self.anilist = AniList(self.session)
         self.start_time = discord.utils.utcnow()
         self.is_dev = self.config["Bot"]["IS_DEV"]
+
+        self.add_dynamic_items(DeleteButton)
 
         self.loop.create_task(self.on_bot_ready())
 
