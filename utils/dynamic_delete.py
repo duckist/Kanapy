@@ -49,5 +49,4 @@ class DeleteButton(
                 ephemeral=True,
             )
 
-        if interaction.message:
-            await interaction.message.delete()
+        await interaction.delete_original_response()
