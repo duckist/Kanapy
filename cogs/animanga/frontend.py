@@ -131,5 +131,5 @@ class AnimangaFrontend(BaseCog):
         return await self._search(
             ctx,
             query,
-            search_type=SearchType.ANIME,
+            search_type=SearchType.MANGA,
         )
