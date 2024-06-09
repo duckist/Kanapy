@@ -1,36 +1,40 @@
 [Bot]
-    SOURCE_URL = "" # the source URL for the bot, useful for the `source` command.
-    DEFAULT_COLOR = "0xE59F9F" # the default colors for the embeds, replace the # of the hex color with `0x`
+    SOURCE_URL = "https://github.com/du-cki/Kana" # the source URL for the bot, useful for the `source` command.
+    DEFAULT_COLOR = "0xE59F9F"                    # the default colors for the embeds, replace the # of the hex color with `0x`
 
     BRANCH = "main" # the branch on which the code is pulled from.
 
     DEFAULT_PREFIX = "uwu" # the default prefix for the bot.
     TOKEN = ""
 
-    IS_DEV = true # if the bot is in a development enviroment, this stops some aspects from the bot like logging.
+    IS_DEV = false # if the bot is in a development enviroment, this stops some aspects from the bot like logging.
 
     PSQL_URI = "" # postgresql connection URI.
 
+    ANILIST_ID = ""
+    ANILIST_SECRET = ""
+
     GUILD_NAME = "bot" # default guild name, absolutely doesn't matter what it is
-    GUILD_ID = false # Set a Guild ID that the bot is in, if none set; one will be created by the bot.
+    GUILD_ID = ""      # Set a Guild ID that the bot is in, if none set; one will be created by the bot.
 
     [Bot.Output] # the stdout output of bot, this could be errors or just standard logging.
-        SEND_TO_WEBHOOK = true # a boolean that toggles if you want to send all the stdout to a webhook or not.
+        SEND_TO_WEBHOOK = false # a boolean that toggles if you want to send all the stdout to a webhook or not.
 
         # A webhook to funnel all the stdout too.
         # If none supplied and `SEND_TO_WEBHOOK` is true, one will be created for you in the bot guild.
-        WEBHOOK = false
+        WEBHOOK = ""
 
     [Bot.Emojis]
         WEBSOCKET = "<a:_:963608475982774282>"
-        CHAT_BOX  =  "<:_:963608317370974240>"
-        POSTGRES  =  "<:_:963608621017608294>"
+        CHAT_BOX = "<:_:963608317370974240>"
+        POSTGRES = "<:_:963608621017608294>"
 
 [Jishaku]
     ENABLED = true
+    
     [Jishaku.Settings]
-        HIDE = true # hide jishaku from help
-        NO_UNDERSCORE = true # if you want `ctx` instead of `_ctx` in the jsk eval
+        HIDE = true            # hide jishaku from help
+        NO_UNDERSCORE = true   # if you want `ctx` instead of `_ctx` in the jsk eval
         NO_DM_TRACEBACK = true # if you don't want tracebacks in DMs
 
 
@@ -43,19 +47,20 @@
     [Cogs.Search]
         # YOUTUBE = "" # YouTube API key for the search cog.
 
-        [Cogs.Search.Emojis]
-            SPOTIFY = "<:Spotify:965423474292162572>" # This will be presented in the dropdown of the spotify command.
+    [Cogs.Search.Emojis]
+        SPOTIFY = "<:Spotify:965423474292162572>" # This will be presented in the dropdown of the spotify command.
 
     [Cogs.Logger]
-        [Cogs.Logger.AVATAR_LOGGING]
-            ENABLED = true # change this to false if you don't want avatar logging.
+        ENABLED = true
 
-            WEBHOOKS = []
+    [Cogs.Logger.AVATAR_LOGGING]
+        ENABLED = false # change this to false if you don't want avatar logging.
 
+        WEBHOOKS = []
 
-        [Cogs.Logger.NAME_LOGGING]
-            ENABLED = true # change this to false if you don't want avatar logging.
-    
+    [Cogs.Logger.NAME_LOGGING]
+        ENABLED = true # change this to false if you don't want avatar logging.
+
     [Cogs.Download]
         # path to download the videos and temporarily save the file.
         # (NOTE: it should end with `/` or else it'll get confused.)

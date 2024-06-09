@@ -10,6 +10,8 @@ from .types import (
     SearchType,
     Media,
     MediaResponse,
+    AccessToken,
+    PartialUser,
 )
 
 if TYPE_CHECKING:
@@ -29,8 +31,8 @@ query ($search: String, $type: MediaType) {
 """
 
 FETCH_QUERY = """
-query ($search: %s, $type: MediaType) {
-  Media(%s: $search, type: $type, sort: POPULARITY_DESC) {
+query ($id: Int, $search: String, $type: MediaType) {
+  Media(id: $id, search: $search, type: $type, sort: POPULARITY_DESC) {
     title {
       romaji
     }
@@ -82,14 +84,6 @@ query ($search: %s, $type: MediaType) {
 """
 
 
-def format_query(query: str) -> tuple[str, Optional[str]]:
-    match = QUERY_PATTERN.fullmatch(query)
-    if match:
-        return (FETCH_QUERY % ("Int", "id"), match.groups()[0])
-
-    return (FETCH_QUERY % ("String", "search"), None)
-
-
 BASE_URL = "https://graphql.anilist.co/"
 SEARCH_TYPE = {
     "anime": SearchType.ANIME,
@@ -98,40 +92,52 @@ SEARCH_TYPE = {
 
 
 class AniList:
-    def __init__(self, session: ClientSession):
+    def __init__(
+        self,
+        session: ClientSession,
+        *,
+        anilist_id: str,
+        anilist_secret: str,
+    ):
         self.session = session
+        self.ANILIST_ID = anilist_id
+        self.ANILIST_SECRET = anilist_secret
+
+    @classmethod
+    async def new(
+        cls,
+        *,
+        anilist_id: str,
+        anilist_secret: str,
+    ):
+        session = ClientSession()
+        return cls(
+            session,
+            anilist_id=anilist_id,
+            anilist_secret=anilist_secret,
+        )
 
     @staticmethod
     async def query(
         session: ClientSession,
-        query: str,
         *,
-        variables: dict[str, Any] = {},
-        search_type: Optional[SearchType] = None,
+        URL: str = BASE_URL,
+        **kwargs: Any,
     ):
-        if search_type:
-            variables["type"] = search_type.name
-
-        async with session.post(
-            BASE_URL,
-            json={
-                "query": query,
-                "variables": variables,
-            },
-        ) as req:
+        async with session.post(URL, **kwargs) as req:
             if req.status != 200:
                 raise Exception(
-                    f"Recieved a non 200 response: {req.status=} \n{await req.text()}"
+                    f"Recieved a non 200 response: {req.status=}\n{await req.text()}"
                 )
 
             data = await req.json()
 
             if data.get("errors"):
                 raise Exception(
-                    f"Search yielded errors:\n{query=}\n{variables=}\n{await req.text()}"
+                    f"Search yielded errors:\n{kwargs=}\n{await req.text()}"
                 )
 
-            return data["data"]
+            return data.get("data") or data
 
     @classmethod
     async def search_auto_complete(
@@ -158,11 +164,14 @@ class AniList:
 
         req = await cls.query(
             interaction.client.session,
-            SEARCH_QUERY,
-            variables={
-                "search": current or None,
+            json={
+                "query": SEARCH_QUERY,
+                "variables": {
+                    "search": current or None,
+                    "type": SEARCH_TYPE[interaction.command.parent.name],
+                },
+                "search_type": SEARCH_TYPE[interaction.command.parent.name].value,
             },
-            search_type=SEARCH_TYPE[interaction.command.parent.name],
         )
 
         data = req.get("Page", {}).get("media")
@@ -199,15 +208,21 @@ class AniList:
             An Enum of either ANIME or MANGA.
         """
 
-        query, animanga_id = format_query(search)
+        variables = {
+            "type": search_type.name,
+        }
+
+        if match := QUERY_PATTERN.fullmatch(search):
+            variables["id"] = int(match.group(1))  # pyright: ignore[reportArgumentType]
+        else:
+            variables["search"] = search
 
         req = await self.query(
             self.session,
-            query,
-            variables={
-                "search": animanga_id or search,
+            json={
+                "query": FETCH_QUERY,
+                "variables": variables,
             },
-            search_type=search_type,
         )
 
         data: Optional[MediaResponse] = req.get("Media")
@@ -218,3 +233,114 @@ class AniList:
             data,
             search_type=search_type,
         )
+
+    async def get_access_token(self, token: str) -> AccessToken:
+        """
+        Fetches an access token from an authorization code.
+
+        Parameteres
+        ------------
+        token: str
+            The authorization code.
+        """
+
+        req = await self.query(
+            self.session,
+            URL="https://anilist.co/api/v2/oauth/token",
+            json={
+                "code": token,
+                "client_id": self.ANILIST_ID,
+                "client_secret": self.ANILIST_SECRET,
+                "grant_type": "authorization_code",
+                "redirect_uri": "https://anilist.co/api/v2/oauth/pin",
+            },
+        )
+
+        return AccessToken.from_json(req)
+
+    async def fetch_partial_user(self, token: str) -> Optional[PartialUser]:
+        """
+        Fetches the ID of the currently logged in user.
+
+        Parameteres
+        ------------
+        token: str
+            The access token.
+        """
+
+        query = """
+            query {
+                Viewer {
+                    id
+                    name
+                }
+            }
+        """
+
+        req = await self.query(
+            self.session,
+            json={
+                "query": query,
+            },
+            headers={
+                "Authorization": f"Bearer {token}",
+            },
+        )
+
+        data = req.get("Viewer", {})
+        if not data:
+            return None
+
+        return PartialUser(
+            name=data["name"],
+            id=data["id"],
+        )
+
+    async def get_partial_user(self, user: str | int) -> Optional[PartialUser]:
+        """
+        Fetches the ID of a user from their username or ID.
+
+        Parameteres
+        ------------
+        user: str | int
+            The username or ID of the user.
+        """
+
+        query = """
+            query ($id: Int, $name: String) {
+                User (id: $id, name: $name) {
+                    id
+                    name
+                }
+            }
+        """
+
+        variables = {}
+        if isinstance(user, int):
+            variables["id"] = user
+        else:
+            variables["name"] = user
+
+        req = await self.query(
+            self.session,
+            json={
+                "query": query,
+                "variables": variables,
+            },
+        )
+
+        data = req.get("User", {})
+        if not data:
+            return None
+
+        return PartialUser(
+            name=data["name"],
+            id=data["id"],
+        )
+
+    async def fetch_user_list(
+        self,
+        user: PartialUser,
+        *,
+        search_type: SearchType,
+    ): ...

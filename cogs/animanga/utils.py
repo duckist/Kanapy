@@ -1,25 +1,42 @@
 from __future__ import annotations
 
+import re
+
 import discord
 from discord import ui
 from discord.ext import commands
 
-import re
 from urllib.parse import quote
 
 from utils.constants import BELL, BOOK, CAMERA, NO_BELL
 from libs.anilist.types import Media, Relation, SearchType
 
-from typing import TYPE_CHECKING, Optional, Self
+from typing import TYPE_CHECKING, Optional, Self, Any
 
 if TYPE_CHECKING:
     from . import Animanga
     from utils.subclasses import Bot
 
 
-class View(ui.View):
+def is_nsfw(
+    ctx: commands.Context[Bot],
+    media: Media,
+) -> bool:
+    if media.is_adult and not (
+        isinstance(
+            ctx.channel,
+            discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,
+        )
+        or ctx.channel.is_nsfw()
+    ):
+        return True
+
+    return False
+
+
+class MediaView(ui.View):
     @classmethod
-    async def from_media(
+    async def from_data(
         cls,
         media: Media,
         bot: Bot,
@@ -54,12 +71,12 @@ class View(ui.View):
 
 
 class RelationSelect(
-    ui.DynamicItem[ui.Select[View]],
+    ui.DynamicItem[ui.Select[MediaView]],
     template=r"kana:animanga_relations",
 ):
     def __init__(self, relations: list[Relation]) -> None:
         super().__init__(
-            ui.Select[View](
+            ui.Select[MediaView](
                 placeholder="Related",
                 custom_id="kana:animanga_relations",
                 options=self._to_options(relations),
@@ -105,7 +122,7 @@ class RelationSelect(
     async def from_custom_id(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         _interaction: discord.Interaction[Bot],
-        _item: ui.Select[View],
+        _item: ui.Select[MediaView],
         _match: re.Match[str],
     ) -> Self:
         return cls([])
@@ -119,14 +136,14 @@ class RelationSelect(
         if not media:
             return await interaction.edit_original_response(view=self.view)
 
-        view = await View.from_media(
+        view = await MediaView.from_data(
             media,
             interaction.client,
             interaction.user.id,
         )
 
         await interaction.followup.send(
-            embed=AnimangaEmbed.from_media(media),
+            embed=MediaEmbed.from_data(media),
             ephemeral=True,
             view=view,  # pyright: ignore[reportArgumentType]
         )
@@ -238,9 +255,9 @@ class ReminderButton(
             await interaction.response.send_message(**args)  # type: ignore
 
 
-class AnimangaEmbed(discord.Embed):
+class MediaEmbed(discord.Embed):
     @classmethod
-    def from_media(cls, data: Media) -> Self:
+    def from_data(cls, data: Media) -> Self:
         embed = cls(
             title=data.title,
             description=data.description,
@@ -277,19 +294,124 @@ class AnimangaEmbed(discord.Embed):
         return embed
 
 
-def is_nsfw(
-    ctx: commands.Context[Bot],
-    media: Media,
-) -> bool:
-    # assert interaction.channel
+class AniListUserConverter(commands.Converter["Bot"]):
+    async def convert(self, ctx: commands.Context[Bot], arg: str):  # pyright: ignore[reportIncompatibleMethodOverride]
+        try:
+            member = await commands.UserConverter().convert(ctx, arg)
 
-    if media.is_adult and not (
-        isinstance(
-            ctx.channel,
-            discord.DMChannel | discord.PartialMessageable | discord.GroupChannel,
+            access_token = await ctx.bot.pool.fetchval(
+                "SELECT access_token FROM anilist_tokens WHERE user_id = $1",
+                member.id,
+            )
+
+            if not access_token:
+                raise commands.BadArgument(
+                    f"You don't have an AniList account linked. You can link your AniList account with `{ctx.clean_prefix} anilist login`."
+                    if ctx.author.id == member.id
+                    else f"**{member.display_name}** does not have an AniList account linked."
+                )
+
+            try:
+                user = await ctx.bot.anilist.fetch_partial_user(access_token)
+            except Exception:
+                await ctx.bot.pool.execute(
+                    "DELETE FROM anilist_tokens WHERE user_id = $1",
+                    member.id,
+                )
+
+                raise commands.BadArgument(
+                    f"Your AniList account token has expired, please login again with `{ctx.clean_prefix} anilist login`."
+                    if ctx.author.id == member.id
+                    else f"**{member.display_name}**'s AniList account token has expired."
+                )
+
+            return user
+        except Exception as e:
+            if isinstance(e, commands.BadArgument):
+                raise e
+
+            try:
+                user = await ctx.bot.anilist.get_partial_user(
+                    int(arg) if arg.isdigit() else arg,
+                )
+            except Exception:
+                raise commands.BadArgument(f"User `{arg}` not found on AniList.")
+
+            return user
+
+
+class LoginModal(ui.Modal, title="AniList Login"):
+    code = ui.TextInput[Self](
+        label="Access Code",
+        placeholder="Enter your code",
+        style=discord.TextStyle.short,
+    )
+
+    def __init__(self, bot: Bot, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.code.value or self.code.value == "undefined":
+            raise ValueError
+
+        try:
+            token = await self.bot.anilist.get_access_token(self.code.value)
+        except Exception:
+            raise ValueError from Exception
+
+        await self.bot.pool.execute(
+            """
+            INSERT INTO anilist_tokens
+                (user_id, access_token, expires_in)
+            VALUES
+                ($1, $2, $3)
+            ON CONFLICT 
+                (user_id)
+            DO UPDATE SET
+                access_token = $2,
+                expires_in = $3
+            """,
+            interaction.user.id,
+            token.access_token,
+            token.expiry,
         )
-        or ctx.channel.is_nsfw()
-    ):
-        return True
 
-    return False
+        await interaction.response.send_message(
+            "Successfully logged in!",
+            ephemeral=True,
+        )
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+    ) -> None:
+        if isinstance(error, ValueError):
+            return await interaction.response.send_message(
+                "Invalid code. Please try again.",
+                ephemeral=True,
+            )
+
+        return await super().on_error(interaction, error)
+
+
+class LoginView(ui.View):
+    def __init__(self, bot: Bot):
+        super().__init__(timeout=None)
+        self.add_item(
+            ui.Button(
+                url=f"https://anilist.co/api/v2/oauth/authorize?client_id={bot.anilist.ANILIST_ID}&redirect_uri=https://anilist.co/api/v2/oauth/pin&response_type=code",
+                label="Get Code",
+            ),
+        )
+
+    @ui.button(label="Submit Code", style=discord.ButtonStyle.green)
+    async def _login(
+        self,
+        interaction: discord.Interaction[Bot],
+        _: ui.Button[Self],
+    ):
+        await interaction.response.send_modal(
+            LoginModal(interaction.client),
+        )

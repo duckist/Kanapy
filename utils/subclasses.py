@@ -151,7 +151,11 @@ class Bot(commands.Bot):
     async def setup_hook(self):
         # called before the bot starts
         self.session = ClientSession()
-        self.anilist = AniList(self.session)
+        self.anilist = AniList(
+            self.session,
+            anilist_id=self.config["Bot"]["ANILIST_ID"],
+            anilist_secret=self.config["Bot"]["ANILIST_SECRET"],
+        )
         self.start_time = discord.utils.utcnow()
         self.is_dev = self.config["Bot"]["IS_DEV"]
 

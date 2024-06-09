@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from utils.subclasses import Bot
 
 
-class AnimangaReminders(BaseCog):
+class Reminders(BaseCog):
     def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
         self.client = LiveChartClient()

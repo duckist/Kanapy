@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import TypedDict, Literal, Optional, NamedTuple
+from datetime import datetime, timedelta
+from typing import TypedDict, Literal, Optional, NamedTuple, Any
 
 from enum import Enum
 
@@ -182,3 +182,20 @@ class Media(NamedTuple):
             studios=studios,
             relations=relations,
         )
+
+
+class AccessToken(NamedTuple):
+    access_token: str
+    expiry: datetime
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]):
+        return cls(
+            access_token=data["access_token"],
+            expiry=datetime.now() + timedelta(seconds=data["expires_in"]),
+        )
+
+
+class PartialUser(NamedTuple):
+    name: str
+    id: str
