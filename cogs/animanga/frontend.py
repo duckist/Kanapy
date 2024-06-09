@@ -128,7 +128,7 @@ class AnimangaFrontend(BaseCog):
             The Manga to search for.
         """
 
-        return self._search(
+        return await self._search(
             ctx,
             query,
             search_type=SearchType.ANIME,
