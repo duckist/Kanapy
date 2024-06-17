@@ -10,6 +10,8 @@ import inspect
 from datetime import datetime
 from platform import python_version
 
+from jishaku.features.root_command import natural_size as ns  # pyright: ignore[reportPrivateImportUsage]
+
 from typing import TYPE_CHECKING, Any, Optional
 
 from utils import deltaconv
@@ -29,7 +31,7 @@ def get_latest_commits(source_url: str, count: int = 3) -> str:
 
         final = ""
         for commit in commits:
-            final += f"\n[ [`{commit.hex[:6]}`]({source_url}/commit/{commit.hex}) ] "
+            final += f"\n[ [`{commit.hex[:6]}`]({source_url}/commit/{commit.hex}) ] "  # pyright: ignore
             if len(commit.message) > 40:
                 final += commit.message[:42].replace("\n", "") + "..."
             else:
@@ -126,7 +128,7 @@ class Utility(BaseCog):
 
         branch = ctx.bot.config["Bot"]["BRANCH"]
         if obj.__class__.__name__ == "_HelpCommandImpl":
-            return await ctx.send(f"no source for help yet")
+            return await ctx.send("no source for help yet")
 
         src = obj.callback.__code__
         filename = src.co_filename
@@ -159,16 +161,15 @@ class Utility(BaseCog):
         if not self.appinfo:
             self.appinfo = await ctx.bot.application_info()
 
-        mem = psutil.Process().memory_full_info().uss / 1024**2
-        cpu = psutil.Process().cpu_percent() / psutil.cpu_count()
+        p_mem = ns(psutil.Process().memory_full_info().uss)
+        p_cpu = psutil.Process().cpu_percent() / psutil.cpu_count()
+
+        s_mem = ns(psutil.virtual_memory().used)
+        s_cpu = psutil.cpu_percent()
 
         embed = (
             discord.Embed(
-                description=(
-                    "**Latest Changes** "
-                    + get_latest_commits(source)
-                    + "\n".ljust(40, "\u200b")
-                ),
+                description=("**Latest Changes** " + get_latest_commits(source)),
                 timestamp=discord.utils.utcnow(),
             )
             .set_author(
@@ -178,16 +179,21 @@ class Utility(BaseCog):
             )
             .add_field(
                 name="Version",
-                value=f"python-{python_version()}\ndiscord.py-{discord.__version__}",
+                value=f"`python`: v{python_version()}\n`discord.py`: {discord.__version__}",
             )
             .add_field(
                 name="Uptime",
-                value=format_time(ctx.bot.start_time, brief=True),
+                value=discord.utils.format_dt(ctx.bot.start_time, "R"),
             )
             .add_field(
                 name="Process",
-                value=f"{mem:.2f} MiB\n{cpu:.2f}% CPU",
+                value=f"{p_mem}\n{p_cpu:.2f}% CPU",
             )
+            .add_field(
+                name="Server",
+                value=f"{s_mem}\n{s_cpu:.2f}% CPU",
+            )
+            .set_image(url="https://i.imgur.com/IfBmnOp.png")
         )
 
         await ctx.send(embed=embed)
